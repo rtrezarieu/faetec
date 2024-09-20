@@ -1,0 +1,4 @@
+# @package _global_
+experiment_name: "base"
+equivariance: "" # "" or "data_augmentation" or "frame_averaging"
+fa_type: "" # "" or "stochastic" or "full"

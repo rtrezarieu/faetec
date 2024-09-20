@@ -1,0 +1,27 @@
+run_name: "default"
+
+logger: wandb
+project: grm-faenet
+debug: False
+
+equivariance: "data_augmentation" # "" or "data_augmentation" or "frame_averaging"
+fa_type: "" # "" or "stochastic" or "full"
+
+optimizer:
+    batch_size: 16
+    eval_batch_size: 8
+    epochs: 15
+    scheduler: CosineAnnealingLR
+    optimizer: AdamW
+    lr_initial: 0.002
+
+defaults:
+    - _self_
+    - dataset : oc20
+    - model : faenet
+  
+# Hydra config, do not change.
+hydra:
+  output_subdir: null
+  run:
+    dir: .

@@ -1,0 +1,14 @@
+name: faenet
+act: swish
+loss: mae
+hidden_channels: 384
+num_filters: 480
+num_interactions: 5
+num_gaussians: 104
+dropout_lin: 0.0
+dropout_edge: 0.0
+cutoff: 6.0
+use_pbc: True
+tag_hidden_channels: 64 # only for OC20
+pg_hidden_channels: 64 # period & group embedding hidden channels
+phys_embeds: True # physics-aware embeddings for atoms
