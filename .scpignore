@@ -1,0 +1,9 @@
+data/
+data_to_convert/
+venv/
+.git/
+README.md
+.gitignore
+.scpignore
+*.log
+*.tmp
