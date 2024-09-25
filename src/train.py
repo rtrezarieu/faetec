@@ -10,6 +10,8 @@ from .faenet import FAENet
 from .datasets.data_utils import Normalizer, GraphRotate, GraphReflect
 from .utils import Compose
 
+from comet_ml import Experiment
+
 def transformations_list(config):
     transform_list = []
     if config.get('equivariance', "") != "":
@@ -44,6 +46,15 @@ class Trainer():
                 wandb.init(project=self.config['project'], name=self.run_name)
                 wandb.config.update(self.config)
                 self.writer = wandb
+            elif self.config['logger'] == 'comet':
+                self.experiment = Experiment(
+                    api_key="4PNGEKdzZGpTM83l7pBrnYgTo",
+                    project_name=self.config['project'],
+                    workspace="rtrezarieu"
+                )
+                self.experiment.set_name(self.run_name)
+                self.experiment.log_parameters(self.config)
+                self.writer = self.experiment
     
     def load_model(self):
         self.model = FAENet(**self.config["model"]).to(self.device)
@@ -158,19 +169,31 @@ class Trainer():
                     "train/epoch": (epoch*len(self.train_loader) + batch_idx) / (len(self.train_loader))
                 }
                 if not self.debug:
-                    self.writer.log(metrics)
+                    if self.config['logger'] == 'wandb':
+                        self.writer.log(metrics)
+                    elif self.config['logger'] == 'comet':
+                        self.writer.log_metrics(metrics)
                 pbar.set_description(f'Epoch {epoch+1}/{epochs} - Loss: {loss.detach().item():.6f}')
                 if self.scheduler:
                     self.scheduler.step()
             if not self.debug:
-                self.writer.log({
-                    "train/mae_epoch": mae_loss.item()/len(self.train_loader),
-                    "train/mse_epoch": mse_loss.item()/len(self.train_loader),
-                })
+                if self.config['logger'] == 'wandb':
+                    self.writer.log({
+                        "train/mae_epoch": mae_loss.item() / len(self.train_loader),
+                        "train/mse_epoch": mse_loss.item() / len(self.train_loader),
+                    })
+                elif self.config['logger'] == 'comet':
+                    self.writer.log_metrics({
+                        "train/mae_epoch": mae_loss.item() / len(self.train_loader),
+                        "train/mse_epoch": mse_loss.item() / len(self.train_loader),
+                    })
             if self.device.type == 'cuda':
                 torch.cuda.empty_cache()
             if not self.debug:
-                self.writer.log({"systems_per_second": 1/(run_time / n_batches)})
+                if self.config['logger'] == 'wandb':
+                    self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})
+                elif self.config['logger'] == 'comet':
+                    self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))
             if epoch != epochs-1:
                 self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
         self.validate(epoch) # Validate on all splits
@@ -205,10 +228,16 @@ class Trainer():
                 pbar.set_description(f'Val {i} - Epoch {epoch+1} - MAE: {mae_loss.item()/(batch_idx+1):.6f}')
             total_loss /= len(val_loader)
             if not self.debug:
-                self.writer.log({
-                    f"{split}/mae": mae_loss.item() / len(val_loader),
-                    f"{split}/mse": mse_loss.item() / len(val_loader),
-                })
+                if self.config['logger'] == 'wandb':
+                    self.writer.log({
+                        f"{split}/mae": mae_loss.item() / len(val_loader),
+                        f"{split}/mse": mse_loss.item() / len(val_loader),
+                    })
+                elif self.config['logger'] == 'comet':
+                    self.writer.log_metrics({
+                        f"{split}/mae": mae_loss.item() / len(val_loader),
+                        f"{split}/mse": mse_loss.item() / len(val_loader),
+                    })
 
     def measure_model_invariance(self, model):
         model.eval()
@@ -261,7 +290,10 @@ class Trainer():
         metrics[f"{split}/energy_delta_reflected"] =  energy_delta_reflected / n_batches
         metrics[f"{split}/energy_delta_rotated_3d"] =  energy_delta_rotated_3d / n_batches
         if not self.debug:
-            self.writer.log(metrics)
+            if self.config['logger'] == 'wandb':
+                self.writer.log(metrics)
+            elif self.config['logger'] == 'comet':
+                self.writer.log_metrics(metrics)
         pbar.close()
         print("\nInvariance results:")
         for key, value in metrics.items():

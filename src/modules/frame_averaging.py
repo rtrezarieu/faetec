@@ -59,7 +59,7 @@ def frame_averaging(pos, cell=None, fa_method="stochastic", oc20=True):
 
     fa_cell = deepcopy(cell)
 
-    for pm in basis_projections:
+    for pm in basis_projections: # pm for plus-minus
         new_eigenvec = pm * eigenvec # Change the basis of the frame's element
         fa_pos = relative_pos @ new_eigenvec # Project the positions on the new basis
 
