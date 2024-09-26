@@ -1,8 +1,10 @@
 data/
 data_to_convert/
 venv/
-.git/
 README.md
+run_calculations_on_cluster.bat
+transfer_files_to_cluster.bat
+0transfer_file_to_cluster.bat
 .gitignore
 .scpignore
 *.log

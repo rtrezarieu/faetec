@@ -31,7 +31,6 @@ date
 
 # python ~/GRM-FAENET/main.py debug=True
 python ~/GRM-FAENET/main.py equivariance=frame_averaging fa_type=stochastic
-python ~/GRM-FAENET/main.py equivariance=frame_averaging fa_type=full
 
 echo "Run completed at:- "
 date
