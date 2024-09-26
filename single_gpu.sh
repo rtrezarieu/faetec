@@ -23,6 +23,9 @@ source ${CONDA_ROOT}/etc/profile.d/conda.sh
 conda activate $PYTHON_VIRTUAL_ENVIRONMENT
 ulimit -s unlimited
 
+# Change to the directory where the data files are located
+cd ~/GRM-FAENET
+
 # Create logs directory if it doesn't exist
 mkdir -p logs
 

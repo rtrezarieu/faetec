@@ -5,6 +5,7 @@ README.md
 run_calculations_on_cluster.bat
 transfer_files_to_cluster.bat
 0transfer_file_to_cluster.bat
+0transfer_files_to_cluster_no_password.bat
 .gitignore
 .scpignore
 *.log

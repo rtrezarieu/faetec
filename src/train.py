@@ -1,3 +1,4 @@
+from comet_ml import Experiment
 import torch
 import wandb
 from tqdm import tqdm
@@ -9,8 +10,6 @@ from .modules.frame_averaging import FrameAveraging
 from .faenet import FAENet
 from .datasets.data_utils import Normalizer, GraphRotate, GraphReflect
 from .utils import Compose
-
-from comet_ml import Experiment
 
 def transformations_list(config):
     transform_list = []
