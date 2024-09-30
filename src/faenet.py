@@ -60,8 +60,11 @@ class FAENet(nn.Module):
         # Skip co
         self.mlp_skip_co = nn.Linear((self.num_interactions + 1), 1)
 
+    ####### à modifier
+    # 
     def forward(self, data):
-        z = data.atomic_numbers.long()
+        z = data.atomic_numbers.long() ### comprendre comment le .atomic_numbers fonctionne sur data (batch) qui comprend plein d'éléments.
+        f = data.forces #### trouver un moyen de faire ça
         pos = data.pos
         batch = data.batch
         energy_skip_co = []
@@ -108,7 +111,7 @@ class FAENet(nn.Module):
                 edge_attr = edge_attr[edge_mask]
                 rel_pos = rel_pos[edge_mask]
 
-        h, e = self.embed_block(z, rel_pos, edge_attr, data.tags)
+        h, e = self.embed_block(f, f_norm, rel_pos, edge_attr) ### au lieu de z, dat.tags
 
         for _, interaction in enumerate(self.interaction_blocks):
             energy_skip_co.append(self.output_block(h, edge_index, edge_weight, batch, data))
@@ -158,6 +161,9 @@ class EmbeddingBlock(nn.Module):
         self.lin_e1 = nn.Linear(3, num_filters // 2)  # r_ij on the schema
         self.lin_e12 = nn.Linear(num_gaussians, num_filters - (num_filters // 2))  # d_ij
 
+        self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
+        self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
+
         self.emb.reset_parameters()
         self.tag_embedding.reset_parameters()
         self.period_embedding.reset_parameters()
@@ -167,35 +173,42 @@ class EmbeddingBlock(nn.Module):
         nn.init.xavier_uniform_(self.lin_e1.weight)
         self.lin_e1.bias.data.fill_(0)
 
-    def forward(self, z, rel_pos, edge_attr, tag=None):
+    def forward(self, f, f_norm, rel_pos, edge_attr, tag=None): # z
         # Edge embedding
         rel_pos = self.lin_e1(rel_pos)  # r_ij
         edge_attr = self.lin_e12(edge_attr)  # d_ij
         e = torch.cat((rel_pos, edge_attr), dim=1)
         e = swish(e) 
+        
+
+        f = self.lin_h1(f) # f_i
+        f_norm = self.lin_h12(f_norm)  # ||f_i||
+        h = torch.cat((f, f_norm), dim=1)
+        h = swish(h) 
+
 
         # Node embedding
         # Create atom embeddings based on its characteristic number
-        h = self.emb(z)
+        # h = self.emb(z)
 
-        if self.phys_emb.device != h.device:
-            self.phys_emb = self.phys_emb.to(h.device)
+        # if self.phys_emb.device != h.device:
+        #     self.phys_emb = self.phys_emb.to(h.device)
 
-        # Concat tag embedding
-        h_tag = self.tag_embedding(tag)
-        h = torch.cat((h, h_tag), dim=1)
+        # # Concat tag embedding
+        # h_tag = self.tag_embedding(tag)
+        # h = torch.cat((h, h_tag), dim=1)
 
-        # Concat physics embeddings
-        h_phys = self.phys_emb.properties[z]
-        h = torch.cat((h, h_phys), dim=1)
+        # # Concat physics embeddings
+        # h_phys = self.phys_emb.properties[z]
+        # h = torch.cat((h, h_phys), dim=1)
 
-        # Concat period & group embedding
-        h_period = self.period_embedding(self.phys_emb.period[z])
-        h_group = self.group_embedding(self.phys_emb.group[z])
-        h = torch.cat((h, h_period, h_group), dim=1)
+        # # Concat period & group embedding
+        # h_period = self.period_embedding(self.phys_emb.period[z])
+        # h_group = self.group_embedding(self.phys_emb.group[z])
+        # h = torch.cat((h, h_period, h_group), dim=1)
 
         # MLP
-        h = swish(self.lin(h))
+        # h = swish(self.lin(h)) # We keep this MLP, for h. h stores the information while e filters? TO TEST
 
         return h, e
 

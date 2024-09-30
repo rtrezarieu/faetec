@@ -11,6 +11,7 @@ from .faenet import FAENet
 from .datasets.data_utils import Normalizer, GraphRotate, GraphReflect
 from .utils import Compose
 
+# à changeeeeeeer dans un second temps
 def transformations_list(config):
     transform_list = []
     if config.get('equivariance', "") != "":
@@ -73,6 +74,7 @@ class Trainer():
         elif self.config['model'].get('loss', 'mse') == 'mae':
             self.criterion = torch.nn.L1Loss(reduction=reduction)
     
+    ############ To modify ############
     def load_train_loader(self):
         if self.config['dataset']['train'].get("normalize_labels", False):
             if self.config['dataset']['train']['normalize_labels']:
@@ -81,14 +83,19 @@ class Trainer():
                 self.normalizer = None
 
         self.parallel_collater = ParallelCollater() # To create graph batches
-        self.transform = transformations_list(self.config)
+        # self.transform = transformations_list(self.config)
+        self.transform = None ###### Mettre à jour selon papier latex
         train_dataset = BaseDataset(self.config['dataset']['train'], transform=self.transform)
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=True, num_workers=0, collate_fn=self.parallel_collater)
     
+    ############ To modify ############
+    # Valide explicitement sur un set tourné
+    # Valide sur une structure tournée plusieurs fois, si config['equivariance'] != 'data_augmentation'
     def load_val_loaders(self):
         self.val_loaders = []
         for split in self.config['dataset']['val']:
-            transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
+            # transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
+            transform = None ########### Mettre à jour selon papier latex
             val_dataset = BaseDataset(self.config['dataset']['val'][split], transform=transform)
             val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
             self.val_loaders.append(val_loader)

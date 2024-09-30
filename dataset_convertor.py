@@ -69,6 +69,8 @@ with tqdm(total=total_files, desc="Processing files") as pbar:
             'y': y,
         }
 
+    
+
         # Store each structure with a unique key (e.g., filename or index)
         key = os.path.relpath(file_path, data_dir).encode('ascii')  # LMDB keys must be bytes
         value = pickle.dumps(processed_data)  # Serialize the processed data
