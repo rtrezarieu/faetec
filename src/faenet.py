@@ -9,7 +9,7 @@ def swish(x):
 
 class FAENet(nn.Module):
     def __init__(self, cutoff=6.0, use_pbc=True, max_num_neighbors=40,
-                 num_gaussians=50, num_filters=128, hidden_channels=128,
+                 num_gaussians=1, num_filters=128, hidden_channels=128,   # num_gaussians = 50 if RBF active
                  tag_hidden_channels=32, pg_hidden_channels=32, 
                  phys_embeds=True, num_interactions=4, **kwargs,
                  ):
@@ -30,7 +30,7 @@ class FAENet(nn.Module):
         self.dropout_lin = float(kwargs.get("dropout_lin") or 0)
 
         # Gaussian Basis
-        self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)
+        self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)   # RBF: outputs of dimension self.num_gaussians 
 
         # Embedding block
         self.embed_block = EmbeddingBlock(
@@ -63,61 +63,41 @@ class FAENet(nn.Module):
     ####### à modifier
     # 
     def forward(self, data):
-        z = data.atomic_numbers.long() ### comprendre comment le .atomic_numbers fonctionne sur data (batch) qui comprend plein d'éléments.
-        f = data.forces #### trouver un moyen de faire ça
+        # z = data.atomic_numbers.long()
         pos = data.pos
-        batch = data.batch
+        f = data.forces
+        batch = data.batch  # the batch attribute should be created by the DataLoader
         energy_skip_co = []
 
-        if self.use_pbc and hasattr(data, "cell"):
-            assert z.dim() == 1 and z.dtype == torch.long
+        f_norm = torch.norm(f, dim=-1, keepdim=True) # Stocker cette matrice. Ce n'est pas lamda_f. 
+        # lambda_f sera soit le maximum de ces nombres là, soit l'inverse de ce nombre.Il faudra faire ça dans la partie graph creation, avant. Au même endroit où U est calculé
+        
+        edge_index = data.edge_index
+        rel_pos = pos[edge_index[0]] - pos[edge_index[1]] # (num_edges, num_dimensions)
+        edge_weight = rel_pos.norm(dim=-1) # (num_edges,) = edges lengths
 
-            if self.dropout_edge > 0:
-                edge_index, edge_mask = dropout_edge(
-                    data.edge_index,
-                    p=self.dropout_edge,
-                    training=self.training
-                )
+        # edge_attr/edge_length = self.distance_expansion(edge_weight) # RBF (num_edges, num_gaussians), put num_gaussians=1, if RBF is not used
+        edge_attr = torch.cat((data.beam_col, edge_weight), dim=1) # Add E, I, A to it
 
-            out = get_pbc_distances(
-                pos,
-                data.edge_index,
-                data.cell,
-                data.cell_offsets,
-                data.neighbors,
+        if self.dropout_edge > 0:
+            edge_index, edge_mask = dropout_edge(     # edge_mask is a boolean tensor of shape (num_edges,)
+                edge_index,
+                p=self.dropout_edge,
+                training=self.training
             )
-
-            edge_index = out["edge_index"]
-            edge_weight = out["distances"]
-            rel_pos = out["distance_vec"]
-            edge_attr = self.distance_expansion(edge_weight)
-        else: # why is that an else?
-            edge_index = radius_graph(
-                pos,
-                r=self.cutoff,
-                batch=batch,
-                max_num_neighbors=self.max_num_neighbors,
-            )
-            rel_pos = pos[edge_index[0]] - pos[edge_index[1]]
-            edge_weight = rel_pos.norm(dim=-1)
-            edge_attr = self.distance_expansion(edge_weight)
-            if self.dropout_edge > 0:
-                edge_index, edge_mask = dropout_edge(
-                    edge_index,
-                    p=self.dropout_edge,
-                    training=self.training
-                )
-                edge_weight = edge_weight[edge_mask]
-                edge_attr = edge_attr[edge_mask]
-                rel_pos = rel_pos[edge_mask]
+            edge_weight = edge_weight[edge_mask]
+            edge_attr = edge_attr[edge_mask]
+            rel_pos = rel_pos[edge_mask]
 
         h, e = self.embed_block(f, f_norm, rel_pos, edge_attr) ### au lieu de z, dat.tags
 
+
+        # Now change the predictions from energy only, to B, M, N // modify the output block
         for _, interaction in enumerate(self.interaction_blocks):
             energy_skip_co.append(self.output_block(h, edge_index, edge_weight, batch, data))
             h = interaction(h, edge_index, e)
 
-        energy = self.output_block(h, edge_index, edge_weight, batch, data=data)
+        energy = self.output_block(h, edge_index, edge_weight, batch, data=data) # 
 
         energy_skip_co.append(energy)
         energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
@@ -159,10 +139,10 @@ class EmbeddingBlock(nn.Module):
 
         # Edge embedding
         self.lin_e1 = nn.Linear(3, num_filters // 2)  # r_ij on the schema
-        self.lin_e12 = nn.Linear(num_gaussians, num_filters - (num_filters // 2))  # d_ij
+        self.lin_e12 = nn.Linear(num_gaussians + 2, num_filters - (num_filters // 2))  # d_ij, +2 for Beam/Column One-Hot vectors
 
         self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
-        self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
+        self.lin_h12 = nn.Linear(num_gaussians + 2, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
 
         self.emb.reset_parameters()
         self.tag_embedding.reset_parameters()

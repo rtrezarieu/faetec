@@ -61,10 +61,15 @@ with tqdm(total=total_files, desc="Processing files") as pbar:
         edge_index = data.edge_index
         y = data.y
 
+        pos = x[:, 3:6]
+        forces = x[:, 9:12]
+        beam_col = edge_attr[0:2]
+
         # Create a dictionary to store in LMDB
         processed_data = {
-            'x': x,
-            'edge_attr': edge_attr,
+            'pos': pos,
+            'forces': forces,
+            'beam_col': beam_col,
             'edge_index': edge_index,
             'y': y,
         }
@@ -91,5 +96,7 @@ val_txn.commit()
 train_env.close()
 val_env.close()
 
-# Package the LMDB directory
-# tar -czvf regular_random.lmdb.tar.gz regular_random.lmdb/
+
+# # Package the LMDB directory
+# os.system('tar -czvf train.lmdb.tar.gz train.lmdb/')
+# os.system('tar -czvf val.lmdb.tar.gz val.lmdb/')
