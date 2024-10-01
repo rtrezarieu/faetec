@@ -77,8 +77,6 @@ with tqdm(total=total_files, desc="Processing files") as pbar:
             'y': y,
         }
 
-    
-
         # Store each structure with a unique key (e.g., filename or index)
         key = os.path.relpath(file_path, data_dir).encode('ascii')  # LMDB keys must be bytes
         value = pickle.dumps(processed_data)  # Serialize the processed data
@@ -102,15 +100,21 @@ val_env.close()
 # Add a small delay to ensure the environment is fully released
 time.sleep(2)
 
-# Package the LMDB directories into tar.gz archives using subprocess
-# subprocess.run(['tar', '-czvf', 'train.lmdb', '-C', train_dir, os.path.basename(train_lmdb_path)], check=True)
-# shutil.move('train.lmdb', train_dir)
-subprocess.run(['tar', '-czvf', os.path.join(train_dir, 'train.lmdb'), '-C', train_dir, 'train.mdb'], check=True)   #os.path.basename(train_lmdb_path)
-
-# subprocess.run(['tar', '-czvf', 'val.lmdb', '-C', val_dir, os.path.basename(val_lmdb_path)], check=True)
-# shutil.move('val.lmdb', val_dir)
-subprocess.run(['tar', '-czvf', os.path.join(val_dir, 'val.lmdb'), '-C', val_dir, 'val.mdb'], check=True) #os.path.basename(val_lmdb_path)
-
-# Remove the LMDB directories
+# Rename data.mdb to train.lmdb and move it up one directory
+shutil.move(os.path.join(train_lmdb_path, 'data.mdb'), os.path.join(train_dir, 'train.lmdb'))
+shutil.move(os.path.join(val_lmdb_path, 'data.mdb'), os.path.join(val_dir, 'val.lmdb'))
 shutil.rmtree(train_lmdb_path)
 shutil.rmtree(val_lmdb_path)
+
+
+
+# No need to package into .tar.gz files
+# # Package the LMDB directories into tar.gz archives using subprocess
+# # subprocess.run(['tar', '-czvf', 'train.lmdb', '-C', train_dir, os.path.basename(train_lmdb_path)], check=True)
+# # shutil.move('train.lmdb', train_dir)
+# subprocess.run(['tar', '-czvf', os.path.join(train_dir, 'train.lmdb'), '-C', train_dir, 'train.mdb'], check=True)   #os.path.basename(train_lmdb_path)
+# subprocess.run(['tar', '-czvf', os.path.join(val_dir, 'val.lmdb'), '-C', val_dir, 'val.mdb'], check=True) #os.path.basename(val_lmdb_path)
+
+# # Remove the LMDB directories
+# shutil.rmtree(train_lmdb_path)
+# shutil.rmtree(val_lmdb_path)

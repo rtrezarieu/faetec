@@ -1,6 +1,7 @@
 data/
 data_to_convert/
 venv/
+tests/
 README.md
 run_calculations_on_cluster.bat
 transfer_files_to_cluster.bat
