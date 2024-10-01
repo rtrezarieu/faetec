@@ -4,13 +4,16 @@ import os
 import random
 import pickle
 from tqdm import tqdm
+import subprocess
+import shutil
+import time
 
-dataset_name = 'regular_random'
+dataset_name = 'regular_random_gw'
 data_dir = f'data_to_convert/{dataset_name}'
 train_dir = f'data/{dataset_name}/train'
 val_dir = f'data/{dataset_name}/val'
-train_lmdb_path = f'{train_dir}/train.lmdb'
-val_lmdb_path = f'{val_dir}/val.lmdb'
+train_lmdb_path = f'{train_dir}/train.mdb'
+val_lmdb_path = f'{val_dir}/val.mdb'
 
 # Ensure train and val directories exist
 os.makedirs(train_dir, exist_ok=True)
@@ -96,7 +99,18 @@ val_txn.commit()
 train_env.close()
 val_env.close()
 
+# Add a small delay to ensure the environment is fully released
+time.sleep(2)
 
-# # Package the LMDB directory
-# os.system('tar -czvf train.lmdb.tar.gz train.lmdb/')
-# os.system('tar -czvf val.lmdb.tar.gz val.lmdb/')
+# Package the LMDB directories into tar.gz archives using subprocess
+# subprocess.run(['tar', '-czvf', 'train.lmdb', '-C', train_dir, os.path.basename(train_lmdb_path)], check=True)
+# shutil.move('train.lmdb', train_dir)
+subprocess.run(['tar', '-czvf', os.path.join(train_dir, 'train.lmdb'), '-C', train_dir, 'train.mdb'], check=True)   #os.path.basename(train_lmdb_path)
+
+# subprocess.run(['tar', '-czvf', 'val.lmdb', '-C', val_dir, os.path.basename(val_lmdb_path)], check=True)
+# shutil.move('val.lmdb', val_dir)
+subprocess.run(['tar', '-czvf', os.path.join(val_dir, 'val.lmdb'), '-C', val_dir, 'val.mdb'], check=True) #os.path.basename(val_lmdb_path)
+
+# Remove the LMDB directories
+shutil.rmtree(train_lmdb_path)
+shutil.rmtree(val_lmdb_path)
