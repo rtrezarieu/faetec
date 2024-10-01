@@ -9,4 +9,4 @@ val:
         src: data/regular_random_gw/val/val.lmdb
 
 # oc20: True
-oc20: False # whether the oc20 dataset is used or not
+oc20: True # whether to run transformations in the train or not
