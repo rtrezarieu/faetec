@@ -15,25 +15,8 @@ class BaseDataset(Dataset):
         self.path = Path(self.config["src"])
 
         if not self.path.exists():
-            try:
-                if sys.platform.startswith('win'):
-                    print(f"Downloading {self.path}...")
-                    subprocess.run(
-                        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(Path("scripts/") / "download_data.ps1"), "-task", "is2re"]
-                    )
-                    print(f"Downloaded {self.path}.")
-                else:
-                    print(f"Downloading {self.path}...")
-                    subprocess.run(
-                        ["bash", str(Path("scripts/") / "download_data.sh"), "is2re"],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    print(f"Downloaded {self.path}.")
-            except Exception as e:
-                print(e)
-                raise FileNotFoundError(f"{self.path} does not exist.")
+            # Eventually add here the code to download the dataset, see oc20 source code.
+            raise FileNotFoundError(f"{self.path} does not exist.")
 
         self.env = lmdb.open(
             str(self.path),

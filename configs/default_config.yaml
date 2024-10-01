@@ -17,7 +17,7 @@ optimizer:
 
 defaults:
     - _self_
-    - dataset : oc20
+    - dataset : structures # oc20
     - model : faenet
   
 # Hydra config, do not change.

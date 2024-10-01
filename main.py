@@ -11,7 +11,8 @@ def main(config: DictConfig):
     print(OmegaConf.to_yaml(config))
 
     debug = config.get("debug", False)
-    config["run_name"] = f'{config["dataset"].get("name", "oc20")}_{config["model"].get("name", "faenet")}_{config.get("experiment_name", "")}'
+    config["run_name"] = f'{config["dataset"].get("name", "structures")}_{config["model"].get("name", "faenet")}_{config.get("experiment_name", "")}'
+    # config["run_name"] = f'{config["dataset"].get("name", "oc20")}_{config["model"].get("name", "faenet")}_{config.get("experiment_name", "")}'
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
