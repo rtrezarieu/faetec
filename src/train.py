@@ -139,11 +139,18 @@ class Trainer():
             mae_loss, mse_loss = 0, 0
             n_batches_epoch = 0
             for batch_idx, (batch) in enumerate(pbar):
-                n_batches += len(batch[0].natoms)
-                n_batches_epoch += len(batch[0].natoms)
-                batch = batch[0].to(self.device)
+                # n_batches += len(batch[0].natoms)
+                n_batches += batch[0].pos.shape[0]  ## maybe to be modified. Maybe batch[0] does not correspond to the first elemetn in oc20.
+                n_batches_epoch += batch[0].pos.shape[0]
+                # batch = batch[0].to(self.device)  ######### There is some incompatibility with the structures dataset
+                ##### check to what batch[0] corresponds to in oc20 dataset
+                # does batch[0] correspond inputs and batch[1] to targets? or batch[0] to the first element? or batch[0] to all elements?
+                # batch = batch.to(self.device)
+
+
                 self.optimizer.zero_grad()
-                start_time = torch.cuda.Event(enable_timing=True)
+                # start_time = torch.cuda.Event(enable_timing=True)
+                start_time = 0
                 output = self.faenet_call(batch)
                 end_time = torch.cuda.Event(enable_timing=True)
                 start_time.record()
@@ -219,7 +226,7 @@ class Trainer():
             mae_loss, mse_loss = 0, 0
             n_batches = 0
             for batch_idx, (batch) in enumerate(pbar):
-                n_batches += len(batch[0].natoms)
+                n_batches += batch[0].pos.shape[0]
                 batch = batch[0].to(self.device)
                 output = self.faenet_call(batch)
                 target = batch.y_relaxed
@@ -265,7 +272,7 @@ class Trainer():
             rotated_graph_3d, _, _ = rotater_3d(batch)
             reflected_graph, _, _ = reflector(batch)
 
-            n_batches += len(batch[0].natoms)
+            n_batches += batch[0].pos.shape[0]
 
             preds_original = self.faenet_call(batch.to(self.device))
             del batch
