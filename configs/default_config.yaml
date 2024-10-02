@@ -4,8 +4,8 @@ logger: comet
 project: grm-faenet
 debug: False
 
-equivariance: "data_augmentation" # "" or "data_augmentation" or "frame_averaging"
-fa_type: "" # "" or "stochastic" or "full"
+equivariance: "frame_averaging" # "" or "data_augmentation" or "frame_averaging"
+fa_type: "stochastic" # "" or "stochastic" or "full"
 
 optimizer:
     batch_size: 16

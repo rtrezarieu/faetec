@@ -30,7 +30,7 @@ class FAENet(nn.Module):
         self.dropout_lin = float(kwargs.get("dropout_lin") or 0)
 
         # Gaussian Basis
-        self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)   # RBF: outputs of dimension self.num_gaussians 
+        # self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)   # To reactivate if use of RBF: outputs of dimension self.num_gaussians 
 
         # Embedding block
         self.embed_block = EmbeddingBlock(
@@ -75,6 +75,7 @@ class FAENet(nn.Module):
         edge_index = data.edge_index
         rel_pos = pos[edge_index[0]] - pos[edge_index[1]] # (num_edges, num_dimensions)
         edge_weight = rel_pos.norm(dim=-1) # (num_edges,) = edges lengths
+        edge_weight = edge_weight.unsqueeze(1) # (num_edges, 1)
 
         # edge_attr/edge_length = self.distance_expansion(edge_weight) # RBF (num_edges, num_gaussians), put num_gaussians=1, if RBF is not used
         edge_attr = torch.cat((data.beam_col, edge_weight), dim=1) # Add E, I, A to it
@@ -142,7 +143,7 @@ class EmbeddingBlock(nn.Module):
         self.lin_e12 = nn.Linear(num_gaussians + 2, num_filters - (num_filters // 2))  # d_ij, +2 for Beam/Column One-Hot vectors
 
         self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
-        self.lin_h12 = nn.Linear(num_gaussians + 2, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
+        self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
 
         self.emb.reset_parameters()
         self.tag_embedding.reset_parameters()

@@ -4,7 +4,7 @@ loss: mae
 hidden_channels: 384
 num_filters: 480
 num_interactions: 5
-num_gaussians: 104
+num_gaussians: 1 # 104
 dropout_lin: 0.0
 dropout_edge: 0.0
 cutoff: 6.0

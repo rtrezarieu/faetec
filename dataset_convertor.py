@@ -66,7 +66,12 @@ with tqdm(total=total_files, desc="Processing files") as pbar:
 
         pos = x[:, 3:6]
         forces = x[:, 9:12]
-        beam_col = edge_attr[0:2]
+        beam_col = edge_attr[:, 0:2]
+
+        ### calculer la norme des B, N, M. Considérer chaque face comme 1 point de donnée. Trois valeurs en sortie pour B, N, M. * nombres de noeuds * nombres de structures
+        ### Calculer l'écart type de ces normes. 
+        ### récupérer ces valeurs pour les réinjecter dans le code (et non dans le config)
+
 
         # Create a dictionary to store in LMDB
         processed_data = {

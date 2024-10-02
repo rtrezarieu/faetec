@@ -74,7 +74,6 @@ class Trainer():
         elif self.config['model'].get('loss', 'mse') == 'mae':
             self.criterion = torch.nn.L1Loss(reduction=reduction)
     
-    ############ To modify ############
     def load_train_loader(self):
         if self.config['dataset']['train'].get("normalize_labels", False):
             if self.config['dataset']['train']['normalize_labels']:
@@ -83,12 +82,16 @@ class Trainer():
                 self.normalizer = None
 
         self.parallel_collater = ParallelCollater() # To create graph batches
-        # self.transform = transformations_list(self.config)
-        self.transform = None ###### Mettre à jour selon papier latex
+        self.transform = transformations_list(self.config)
+
+        #######################################################
+        self.normalizer = None ###### A enlever et remplacer par une normalisation propre
+        #######################################################
+
+
         train_dataset = BaseDataset(self.config['dataset']['train'], transform=self.transform)
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=True, num_workers=0, collate_fn=self.parallel_collater)
     
-    ############ To modify ############
     # Valide explicitement sur un set tourné
     # Valide sur une structure tournée plusieurs fois, si config['equivariance'] != 'data_augmentation'
     def load_val_loaders(self):
@@ -107,20 +110,17 @@ class Trainer():
             return self.model(batch)
         else:
             original_positions = deepcopy(batch.pos)
-            if hasattr(batch, "cell"):
-                original_cell = deepcopy(batch.fa_cell)
+            original_forces = deepcopy(batch.forces)
             # The frame's positions are computed by the data loader
             # If stochastic frame averaging is used, fa_pos will only have one element
             # If the full frame is used, it will have 8 elements in 3D and 4 in 2D (OC20)
             for i in range(len(batch.fa_pos)):
                 batch.pos = batch.fa_pos[i]
-                if hasattr(batch, "cell"):
-                    batch.cell = batch.fa_cell[i]
+                batch.forces = batch.fa_f[i]
                 output = self.model(deepcopy(batch))
-                outputs.append(output["energy"])
+                outputs.append(output["energy"]) ######## à changer
             batch.pos = original_positions
-            if hasattr(batch, "cell"):
-                batch.cell = original_cell
+            batch.forces = original_forces
         energy_prediction = torch.stack(outputs, dim=0).mean(dim=0)
         output["energy"] = energy_prediction
         return output
@@ -140,25 +140,23 @@ class Trainer():
             n_batches_epoch = 0
             for batch_idx, (batch) in enumerate(pbar):
                 # n_batches += len(batch[0].natoms)
-                n_batches += batch[0].pos.shape[0]  ## maybe to be modified. Maybe batch[0] does not correspond to the first elemetn in oc20.
+                n_batches += batch[0].pos.shape[0]
                 n_batches_epoch += batch[0].pos.shape[0]
-                # batch = batch[0].to(self.device)  ######### There is some incompatibility with the structures dataset
-                ##### check to what batch[0] corresponds to in oc20 dataset
-                # does batch[0] correspond inputs and batch[1] to targets? or batch[0] to the first element? or batch[0] to all elements?
-                # batch = batch.to(self.device)
-
-
+                batch = batch[0].to(self.device)
                 self.optimizer.zero_grad()
-                # start_time = torch.cuda.Event(enable_timing=True)
                 start_time = 0
+                # start_time = torch.cuda.Event(enable_timing=True) ########################## A décommenter
                 output = self.faenet_call(batch)
-                end_time = torch.cuda.Event(enable_timing=True)
-                start_time.record()
-                end_time.record()
-                torch.cuda.synchronize()
-                current_run_time = start_time.elapsed_time(end_time)
-                run_time += current_run_time
-                target = batch.y_relaxed
+                end_time = 0
+                # end_time = torch.cuda.Event(enable_timing=True) ########################## A décommenter
+                # start_time.record() ########################## A décommenter
+                # end_time.record() ########################## A décommenter
+                # torch.cuda.synchronize() ########################## A décommenter
+                # current_run_time = start_time.elapsed_time(end_time) ########################## A décommenter
+                current_run_time = 0
+                # run_time += current_run_time ########################## A décommenter
+                # target = batch.y_relaxed
+                target = batch.y
                 if self.normalizer:
                     target_normed = self.normalizer.norm(target)
                     output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))

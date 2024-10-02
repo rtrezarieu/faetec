@@ -1,12 +1,19 @@
 name: structures
 train:
     src: data/regular_random_gw/train/train.lmdb
-    # normalize_labels: True
-    # target_mean: -1.525913953781128
-    # target_std: 2.279365062713623
+    normalize_labels: True
+    target_mean_disp: 0
+    target_std_disp: 2.279365062713623
+
+    target_mean_N: 0
+    target_std_N: 2.279365062713623
+
+    target_mean_M: 0
+    target_std_M: 2.279365062713623
+
 val:
     val:
         src: data/regular_random_gw/val/val.lmdb
 
 # oc20: True
-oc20: True # whether to run transformations in the train or not
+oc20: False # whether to run 2D transformations or 3D (False)
