@@ -104,7 +104,7 @@ class FAENet(nn.Module):
         energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
 
         preds = {
-            "energy": energy,
+            "energy": energy,    ######################### à modifier en suivant la version originale de FAENet
             "hidden_state": h,
         }
 

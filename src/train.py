@@ -2,6 +2,7 @@ from comet_ml import Experiment
 import torch
 import wandb
 from tqdm import tqdm
+import numpy as np
 from copy import deepcopy
 import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -11,7 +12,6 @@ from .faenet import FAENet
 from .datasets.data_utils import Normalizer, GraphRotate, GraphReflect
 from .utils import Compose
 
-# à changeeeeeeer dans un second temps
 def transformations_list(config):
     transform_list = []
     if config.get('equivariance', "") != "":
@@ -77,17 +77,24 @@ class Trainer():
     def load_train_loader(self):
         if self.config['dataset']['train'].get("normalize_labels", False):
             if self.config['dataset']['train']['normalize_labels']:
-                self.normalizer = Normalizer( mean=self.config['dataset']['train']['target_mean'], std=self.config['dataset']['train']['target_std'])
+                # self.normalizer = Normalizer(means=self.config['dataset']['train']['target_mean'], stds=self.config['dataset']['train']['target_std'])
+                self.normalizer = Normalizer(
+                    means={
+                        'disp': self.config['dataset']['train']['target_mean_disp'],
+                        'N': self.config['dataset']['train']['target_mean_N'],
+                        'M': self.config['dataset']['train']['target_mean_M']
+                    },
+                    stds={
+                        'disp': self.config['dataset']['train']['target_std_disp'],
+                        'N': self.config['dataset']['train']['target_std_N'],
+                        'M': self.config['dataset']['train']['target_std_M']
+                    }
+                )
             else:
                 self.normalizer = None
 
         self.parallel_collater = ParallelCollater() # To create graph batches
         self.transform = transformations_list(self.config)
-
-        #######################################################
-        self.normalizer = None ###### A enlever et remplacer par une normalisation propre
-        #######################################################
-
 
         train_dataset = BaseDataset(self.config['dataset']['train'], transform=self.transform)
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=True, num_workers=0, collate_fn=self.parallel_collater)
@@ -97,15 +104,38 @@ class Trainer():
     def load_val_loaders(self):
         self.val_loaders = []
         for split in self.config['dataset']['val']:
-            # transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
-            transform = None ########### Mettre à jour selon papier latex
+            transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
             val_dataset = BaseDataset(self.config['dataset']['val'][split], transform=transform)
             val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
             self.val_loaders.append(val_loader)
     
-    def faenet_call(self, batch):
+    # def faenet_call(self, batch):
+    #     equivariance = self.config.get("equivariance", "")
+    #     outputs = []
+    #     if equivariance != "frame_averaging":
+    #         return self.model(batch)
+    #     else:
+    #         original_positions = deepcopy(batch.pos)
+    #         original_forces = deepcopy(batch.forces)
+    #         # The frame's positions are computed by the data loader
+    #         # If stochastic frame averaging is used, fa_pos will only have one element
+    #         # If the full frame is used, it will have 8 elements in 3D and 4 in 2D (OC20)
+    #         for i in range(len(batch.fa_pos)):
+    #             batch.pos = batch.fa_pos[i]
+    #             batch.forces = batch.fa_f[i]
+    #             output = self.model(deepcopy(batch))
+    #             outputs.append(output["energy"]) ######## à changer.
+    #         batch.pos = original_positions
+    #         batch.forces = original_forces
+    #     energy_prediction = torch.stack(outputs, dim=0).mean(dim=0)
+    #     output["energy"] = energy_prediction
+    #     return output
+
+    def faenet_call(self, batch):  ####### à modifier pour décoder disp et N,M différemment
         equivariance = self.config.get("equivariance", "")
-        outputs = []
+        output_keys = ["disp", "NX", "TY", "TZ", "MX", "MY", "MZ"]
+        outputs = {key: [] for key in output_keys}
+
         if equivariance != "frame_averaging":
             return self.model(batch)
         else:
@@ -118,12 +148,14 @@ class Trainer():
                 batch.pos = batch.fa_pos[i]
                 batch.forces = batch.fa_f[i]
                 output = self.model(deepcopy(batch))
-                outputs.append(output["energy"]) ######## à changer
+                for key in output_keys:
+                    outputs[key].append(output[key])
             batch.pos = original_positions
             batch.forces = original_forces
-        energy_prediction = torch.stack(outputs, dim=0).mean(dim=0)
-        output["energy"] = energy_prediction
+        # Stack and average the outputs
+        output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys} ### output devient un dictionnaire. ADAPTER le reste du code
         return output
+
 
     def train(self):
         log_interval = self.config["optimizer"].get("log_interval", 100)
@@ -158,12 +190,42 @@ class Trainer():
                 # target = batch.y_relaxed
                 target = batch.y
                 if self.normalizer:
-                    target_normed = self.normalizer.norm(target)
-                    output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    # target_normed = self.normalizer.norm(target)
+                    target_normed = self.normalizer.norm({    ###### pas bête de passer par un dictionnaire pour pouvoir regrouper les coordonnées X, Y, Z // par contre il faut changer le calcul de la loss
+                        'disp': target[:, 0:3],
+                        'N': target[:, 3:21],
+                        'M': target[:, 21:39]
+                    })
+                    # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    output_unnormed = self.normalizer.denorm({
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': torch.cat([output["NX"], output["TY"], output["TZ"]], dim=-1).reshape(-1, 18),
+                        'M': torch.cat([output["MX"], output["MY"], output["MZ"]], dim=-1).reshape(-1, 18)
+                    })
                 else:
-                    target_normed = target
-                    output_unnormed = output["energy"].reshape(-1)
-                loss = self.criterion(output["energy"].reshape(-1), target_normed.reshape(-1))
+                    # target_normed = target
+                    target_normed = {
+                        'disp': target[:, 0:3],
+                        'N': target[:, 3:21],
+                        'M': target[:, 21:39]
+                    }
+                    # output_unnormed = output["energy"].reshape(-1)
+                    output_unnormed = {
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': torch.cat([output["NX"], output["TY"], output["TZ"]], dim=-1).reshape(-1, 18),
+                        'M': torch.cat([output["MX"], output["MY"], output["MZ"]], dim=-1).reshape(-1, 18)
+                    }
+
+                output_N = torch.cat([output["NX"], output["TY"], output["TZ"]], dim=-1).reshape(-1, 18)
+                output_M = torch.cat([output["MX"], output["MY"], output["MZ"]], dim=-1).reshape(-1, 18)
+
+                loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))   ### maybe the reshape operation will spit out an error (not numpy), but it's not very necessary. remove the reshape
+                loss_N = self.criterion(output_N, target_normed["N"].reshape(-1, 18))
+                loss_M = self.criterion(output_M, target_normed["M"].reshape(-1, 18))
+                # Losses combination (weights can be adjusted)
+                loss = loss_disp + loss_N + loss_M
+
+                # loss = self.criterion(output["energy"].reshape(-1), target_normed.reshape(-1))
                 loss.backward()
                 mae_loss_batch = mae(output_unnormed, target).detach()
                 mse_loss_batch = mse(output_unnormed, target).detach()
@@ -229,7 +291,7 @@ class Trainer():
                 output = self.faenet_call(batch)
                 target = batch.y_relaxed
                 if self.normalizer:
-                    output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1)) ########### à changer
                 else:
                     output_unnormed = output["energy"].reshape(-1)
                 mae_loss_batch = mae(output_unnormed, target).detach()
