@@ -10,4 +10,5 @@ train:
   target_std_N: 17.298078536987305
   target_std_disp: 0.018238099291920662
 val:
-  src: data/regular_random_gw/val/val.lmdb
+  val:
+    src: data/regular_random_gw/val/val.lmdb

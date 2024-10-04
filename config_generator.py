@@ -62,7 +62,9 @@ config = {
         'target_std_M': std_M.item(),
     },
     'val': {
-        'src': 'data/regular_random_gw/val/val.lmdb',
+        'val': {
+            'src': 'data/regular_random_gw/val/val.lmdb',
+        }
     },
     'oc20': False
 }
