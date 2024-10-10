@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .gnn_utils import MessagePassing, GraphNorm, GaussianSmearing, dropout_edge, radius_graph, get_pbc_distances, scatter
 from .modules.phys_embedding import PhysEmbedding
+from src.force_decoder import ForceDecoder
 
 def swish(x):
     return x * torch.sigmoid(x)
@@ -55,13 +56,25 @@ class FAENet(nn.Module):
         )
 
         # Output block
-        self.output_block = OutputBlock(self.hidden_channels, self.dropout_lin)
+        # self.output_block = OutputBlock(self.hidden_channels, self.dropout_lin)
+
+        # Force head
+        self.output_block = (
+            ForceDecoder(
+                self.force_decoder_type,
+                self.hidden_channels,
+                self.force_decoder_model_config,
+                self.act,        ######################   swish    //// difinir chacun des arguments /// changer de manière à avoir non pas 3 mais (3,18,18)
+            )
+            if "direct" in self.regress_forces
+            else None
+        )
 
         # Skip co
         self.mlp_skip_co = nn.Linear((self.num_interactions + 1), 1)
 
-    ####### à modifier
-    # 
+        
+    # conserver les modifs faites avec ajouts forces
     def forward(self, data):
         # z = data.atomic_numbers.long()
         pos = data.pos
@@ -73,12 +86,12 @@ class FAENet(nn.Module):
         # lambda_f sera soit le maximum de ces nombres là, soit l'inverse de ce nombre.Il faudra faire ça dans la partie graph creation, avant. Au même endroit où U est calculé
         
         edge_index = data.edge_index
-        rel_pos = pos[edge_index[0]] - pos[edge_index[1]] # (num_edges, num_dimensions)
-        edge_weight = rel_pos.norm(dim=-1) # (num_edges,) = edges lengths
-        edge_weight = edge_weight.unsqueeze(1) # (num_edges, 1)
+        rel_pos = pos[edge_index[0]] - pos[edge_index[1]] # (num_edges, num_dimensions)   ##### à calculer plutôt dans la génération du dataset
+        edge_length = rel_pos.norm(dim=-1) # (num_edges,) = edges lengths
+        edge_length = edge_length.unsqueeze(1) # (num_edges, 1)
 
         # edge_attr/edge_length = self.distance_expansion(edge_weight) # RBF (num_edges, num_gaussians), put num_gaussians=1, if RBF is not used
-        edge_attr = torch.cat((data.beam_col, edge_weight), dim=1) # Add E, I, A to it
+        edge_attr = torch.cat((data.beam_col, edge_length), dim=1) # Add E, I, A to it ######## créer edge_attr plutôt dans la base de données // à concaténer plus tard
 
         if self.dropout_edge > 0:
             edge_index, edge_mask = dropout_edge(     # edge_mask is a boolean tensor of shape (num_edges,)
@@ -86,26 +99,31 @@ class FAENet(nn.Module):
                 p=self.dropout_edge,
                 training=self.training
             )
-            edge_weight = edge_weight[edge_mask]
+            edge_length = edge_length[edge_mask]
             edge_attr = edge_attr[edge_mask]
             rel_pos = rel_pos[edge_mask]
 
-        h, e = self.embed_block(f, f_norm, rel_pos, edge_attr) ### au lieu de z, dat.tags
+        h, e = self.embed_block(f, f_norm, rel_pos, edge_length) ### au lieu de z, dat.tags edge_weight au lieu de edge_attr
 
 
         # Now change the predictions from energy only, to B, M, N // modify the output block
         for _, interaction in enumerate(self.interaction_blocks):
-            energy_skip_co.append(self.output_block(h, edge_index, edge_weight, batch, data))
+            energy_skip_co.append(self.output_block(h, edge_index, edge_length, batch, data))
             h = interaction(h, edge_index, e)
 
-        energy = self.output_block(h, edge_index, edge_weight, batch, data=data) # 
+        # energy = self.output_block(h, edge_index, edge_length, batch, data=data)
+        disp, moments, forces = self.output_block(h, edge_index, edge_length, batch, data=data)
+        ### disp, moments, forces
 
-        energy_skip_co.append(energy)
-        energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
+        # energy_skip_co.append(energy)
+        # energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
 
         preds = {
-            "energy": energy,    ######################### à modifier en suivant la version originale de FAENet
-            "hidden_state": h,
+            # "energy": energy,    ######################### à modifier en suivant la version originale de FAENet
+            "disp": disp,
+            "N": forces,
+            "M": moments
+            # "hidden_state": h,
         }
 
         return preds
@@ -232,26 +250,85 @@ class InteractionBlock(MessagePassing):
     def message(self, x_j, W):
         return x_j * W        # hj * fij produit terme à terme
 
-class OutputBlock(nn.Module):
-    def __init__(self, hidden_channels, dropout):
-        super().__init__()
-        self.dropout = float(dropout)
-        self.lin1 = nn.Linear(hidden_channels, hidden_channels // 2)  # MLP à 2 couches, la dimension intermédiaire = dimension d'entrée divisée par 2
-        self.lin2 = nn.Linear(hidden_channels // 2, 1)
-        self.w_lin = nn.Linear(hidden_channels, 1)
+# class OutputBlock(nn.Module):
+#     def __init__(self, hidden_channels, dropout):
+#         super().__init__()
+#         self.dropout = float(dropout)
+#         self.lin1 = nn.Linear(hidden_channels, hidden_channels // 2)  # MLP à 2 couches, la dimension intermédiaire = dimension d'entrée divisée par 2
+#         self.lin2 = nn.Linear(hidden_channels // 2, 1)
+#         self.w_lin = nn.Linear(hidden_channels, 1)
 
-    def forward(self, h, edge_index, edge_weight, batch, data=None):
-        alpha = self.w_lin(h)
+#     def forward(self, h, edge_index, edge_weight, batch, data=None):
+#         alpha = self.w_lin(h)
+
+#         # MLP
+#         h = F.dropout(h, p=self.dropout, training=self.training)
+#         h = self.lin1(h)
+#         h = swish(h)
+#         h = F.dropout(h, p=self.dropout, training=self.training)
+#         h = self.lin2(h)
+#         h = h * alpha
+
+#         # Pooling
+#         out = scatter(h, batch, dim=0, reduce="add")
+
+#         return out
+    
+
+
+## ça ne convient pas pour les forces
+class OutputBlock(nn.Module):
+    """Compute task-specific predictions from final atom representations."""
+
+    def __init__(self, energy_head, hidden_channels, act, out_dim=1):    ### rajouter act = swish dans l'appel
+        super().__init__()
+        self.energy_head = energy_head
+        self.act = act
+
+        self.lin1 = nn.Linear(hidden_channels, hidden_channels // 2)
+        self.lin2 = nn.Linear(hidden_channels // 2, out_dim)
+
+        # if self.energy_head == "weighted-av-final-embeds":
+        #     self.w_lin = nn.Linear(hidden_channels, 1)
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin1.weight)
+        self.lin1.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.lin2.weight)
+        self.lin2.bias.data.fill_(0)
+        # if self.energy_head == "weighted-av-final-embeds":
+        #     nn.init.xavier_uniform_(self.w_lin.weight)
+        #     self.w_lin.bias.data.fill_(0)
+
+    def forward(self, h, edge_index, edge_weight, batch, alpha):
+        """Forward pass of the Output block.
+        Called in FAENet to make prediction from final atom representations.
+
+        Args:
+            h (tensor): atom representations. (num_atoms, hidden_channels)
+            edge_index (tensor): adjacency matrix. (2, num_edges)
+            edge_weight (tensor): edge weights. (num_edges, )
+            batch (tensor): batch indices. (num_atoms, )
+            alpha (tensor): atom attention weights for late energy head. (num_atoms, )
+
+        Returns:
+            (tensor): graph-level representation (e.g. energy prediction)
+        """
+        # if self.energy_head == "weighted-av-final-embeds":
+        #     alpha = self.w_lin(h)
 
         # MLP
-        h = F.dropout(h, p=self.dropout, training=self.training)
         h = self.lin1(h)
-        h = swish(h)
-        h = F.dropout(h, p=self.dropout, training=self.training)
+        h = self.act(h)
         h = self.lin2(h)
-        h = h * alpha
 
-        # Pooling
+        # if self.energy_head in {
+        #     "weighted-av-initial-embeds",
+        #     "weighted-av-final-embeds",
+        # }:
+        #     h = h * alpha
+
+        # Global pooling
         out = scatter(h, batch, dim=0, reduce="add")
 
         return out

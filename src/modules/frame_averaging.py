@@ -8,7 +8,6 @@ class FrameAveraging:
         self.fa_type = fa_type
         self.equivariance = equivariance
         self.oc20 = oc20
-        ####
 
         assert self.equivariance in {
             "",
@@ -28,11 +27,11 @@ class FrameAveraging:
         elif self.equivariance == "data_augmentation":
             return data_augmentation(data, self.oc20)
         else:
-            data.fa_pos, data.fa_f = frame_averaging(
+            data.fa_pos, data.fa_f, data.fa_rot, data.lbda_f = frame_averaging(
                 data.pos, data.forces, self.fa_type, oc20=self.oc20
             )
             return data
-
+        
 def frame_averaging(pos, f, fa_method="stochastic", oc20=False): # oc20=True
     if oc20:
         used_pos = pos[:, :2]
@@ -59,6 +58,7 @@ def frame_averaging(pos, f, fa_method="stochastic", oc20=False): # oc20=True
     fa_poss = []
     fa_cells = []
     fa_fs = []
+    all_rots = []
 
     for pm in basis_projections: # pm for plus-minus # pm is one combination of the frame
         new_eigenvec = pm[:3] * eigenvec # Change the basis of the frame's element
@@ -74,13 +74,22 @@ def frame_averaging(pos, f, fa_method="stochastic", oc20=False): # oc20=True
 
         fa_poss.append(fa_pos)
         fa_fs.append(fa_f)
+        all_rots.append(new_eigenvec.unsqueeze(0))
+        lbda_f.append(new_lmbda_f)
+
+        # # Handle rare case where no R is positive orthogonal
+        # if all_fa_pos == []:
+        #     all_fa_pos.append(fa_pos)
+        #     all_cell.append(fa_cell)
+        #     all_rots.append(new_eigenvec.unsqueeze(0))
 
     if fa_method == "full":
-        return fa_poss, fa_cells
+        return fa_poss, fa_fs, all_rots, lbda_f
     else: # stochastic
         # index = torch.randint(0, len(fa_poss) - 1, (1,)) # la borne supérieure est exclue
         index = torch.randint(0, len(fa_poss), (1,))
-        return [fa_poss[index]], [fa_fs[index]]
+        return [fa_poss[index]], [fa_fs[index]], [all_rots[index]], [lbda_f[index]]
+
 
 def data_augmentation(g, oc20=True):
     if not oc20:

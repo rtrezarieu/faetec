@@ -21,7 +21,6 @@ def transformations_list(config):
     else:
         return None
 
-
 class Trainer():
     def __init__(self, config, device="cpu", debug=False):
         self.config = config
@@ -95,7 +94,7 @@ class Trainer():
 
         self.parallel_collater = ParallelCollater() # To create graph batches
         self.transform = transformations_list(self.config)
-
+        
         train_dataset = BaseDataset(self.config['dataset']['train'], transform=self.transform)
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=True, num_workers=0, collate_fn=self.parallel_collater)
     
@@ -109,9 +108,11 @@ class Trainer():
             val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
             self.val_loaders.append(val_loader)
     
-    # def faenet_call(self, batch):
+    # def faenet_call(self, batch):  ####### à modifier pour décoder disp et N,M différemment
     #     equivariance = self.config.get("equivariance", "")
-    #     outputs = []
+    #     output_keys = ["disp", "NX", "TY", "TZ", "MX", "MY", "MZ"]
+    #     outputs = {key: [] for key in output_keys}
+
     #     if equivariance != "frame_averaging":
     #         return self.model(batch)
     #     else:
@@ -124,17 +125,19 @@ class Trainer():
     #             batch.pos = batch.fa_pos[i]
     #             batch.forces = batch.fa_f[i]
     #             output = self.model(deepcopy(batch))
-    #             outputs.append(output["energy"]) ######## à changer.
+    #             for key in output_keys:
+    #                 outputs[key].append(output[key])
     #         batch.pos = original_positions
     #         batch.forces = original_forces
-    #     energy_prediction = torch.stack(outputs, dim=0).mean(dim=0)
-    #     output["energy"] = energy_prediction
+    #     # Stack and average the outputs
+    #     output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys} ### output devient un dictionnaire. ADAPTER le reste du code
     #     return output
 
     def faenet_call(self, batch):  ####### à modifier pour décoder disp et N,M différemment
         equivariance = self.config.get("equivariance", "")
-        output_keys = ["disp", "NX", "TY", "TZ", "MX", "MY", "MZ"]
+        output_keys = ["disp", "N", "M"]
         outputs = {key: [] for key in output_keys}
+        disp_all, m_all, n_all = [], [], []
 
         if equivariance != "frame_averaging":
             return self.model(batch)
@@ -144,16 +147,58 @@ class Trainer():
             # The frame's positions are computed by the data loader
             # If stochastic frame averaging is used, fa_pos will only have one element
             # If the full frame is used, it will have 8 elements in 3D and 4 in 2D (OC20)
-            for i in range(len(batch.fa_pos)):
+            for i in range(len(batch.fa_pos)):  ## batch.fa_pos a soit 1 soit 16 colonnes suivant qu'on soit en stochastic ou full fa
                 batch.pos = batch.fa_pos[i]
                 batch.forces = batch.fa_f[i]
                 output = self.model(deepcopy(batch))
                 for key in output_keys:
                     outputs[key].append(output[key])
+                
+                
+                # Displacements predictions are rotated back to be equivariant
+                if outputs.get("disp") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lbda_f[i], batch.natoms, dim=0)
+                    fa_rot = torch.repeat_interleave(batch.fa_rot[i], batch.natoms, dim=0)  ##### recréer natoms en le renommant nnodes  /// fa_rot existe?
+                    # Transform disp to guarantee equivariance of FA method
+                    g_disp = (
+                        outputs["disp"]
+                        .view(-1, 1, 3) # 3 for the 3D coordinates
+                        .bmm(fa_rot.transpose(1, 2).to(outputs["disp"].device))
+                        # .view(-1, 3)
+                    )
+                    g_disp = (g_disp * lmbda_f).view(-1, 3)
+                    disp_all.append(g_disp)
+
+                if outputs.get("M") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lbda_f[i], batch.natoms, dim=0)
+                    # Transform disp to guarantee equivariance of FA method
+                    g_m = (outputs["M"].view(-1, 1, 3) * lmbda_f).view(-1, 3)
+                    m_all.append(g_m)
+
+                if outputs.get("N") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lbda_f[i], batch.natoms, dim=0)
+                    # Transform disp to guarantee equivariance of FA method
+                    g_n = (outputs["N"].view(-1, 1, 3) * lmbda_f).view(-1, 3)
+                    n_all.append(g_n)
+
+
             batch.pos = original_positions
             batch.forces = original_forces
+
+        # Average predictions over frames
+        # outputs["energy"] = sum(e_all) / len(e_all)
+        # if len(disp_all) > 0 and all(y is not None for y in disp_all):
+        #     outputs["disp"] = sum(disp_all) / len(disp_all)
+        # if len(m_all) > 0 and all(y is not None for y in m_all):
+        #     outputs["M"] = sum(m_all) / len(m_all)
+        # if len(n_all) > 0 and all(y is not None for y in n_all):
+        #     outputs["N"] = sum(n_all) / len(n_all)
+        # if len(gt_all) > 0 and all(y is not None for y in gt_all):
+        #     outputs["forces_grad_target"] = sum(gt_all) / len(gt_all)
+
         # Stack and average the outputs
         output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys} ### output devient un dictionnaire. ADAPTER le reste du code
+
         return output
 
 
@@ -199,8 +244,8 @@ class Trainer():
                     # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
                     output_unnormed = self.normalizer.denorm({
                         'disp': output["disp"].reshape(-1, 3),
-                        'N': torch.cat([output["NX"], output["TY"], output["TZ"]], dim=-1).reshape(-1, 18),
-                        'M': torch.cat([output["MX"], output["MY"], output["MZ"]], dim=-1).reshape(-1, 18)
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
                     })
                 else:
                     # target_normed = target
@@ -212,16 +257,13 @@ class Trainer():
                     # output_unnormed = output["energy"].reshape(-1)
                     output_unnormed = {
                         'disp': output["disp"].reshape(-1, 3),
-                        'N': torch.cat([output["NX"], output["TY"], output["TZ"]], dim=-1).reshape(-1, 18),
-                        'M': torch.cat([output["MX"], output["MY"], output["MZ"]], dim=-1).reshape(-1, 18)
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
                     }
 
-                output_N = torch.cat([output["NX"], output["TY"], output["TZ"]], dim=-1).reshape(-1, 18)
-                output_M = torch.cat([output["MX"], output["MY"], output["MZ"]], dim=-1).reshape(-1, 18)
-
                 loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))   ### maybe the reshape operation will spit out an error (not numpy), but it's not very necessary. remove the reshape
-                loss_N = self.criterion(output_N, target_normed["N"].reshape(-1, 18))
-                loss_M = self.criterion(output_M, target_normed["M"].reshape(-1, 18))
+                loss_N = self.criterion(output["N"].reshape(-1, 18), target_normed["N"].reshape(-1, 18))
+                loss_M = self.criterion(output["M"].reshape(-1, 18), target_normed["M"].reshape(-1, 18))
                 # Losses combination (weights can be adjusted)
                 loss = loss_disp + loss_N + loss_M
 
