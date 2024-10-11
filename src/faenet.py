@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,7 +14,12 @@ class FAENet(nn.Module):
     def __init__(self, cutoff=6.0, use_pbc=True, max_num_neighbors=40,
                  num_gaussians=1, num_filters=128, hidden_channels=128,   # num_gaussians = 50 if RBF active
                  tag_hidden_channels=32, pg_hidden_channels=32, 
-                 phys_embeds=True, num_interactions=4, **kwargs,
+                 phys_embeds=True, num_interactions=4,
+                 output_disp=3, output_N=18, output_M=18,
+                 act: str = "swish",
+                 regress_forces: Optional[str] = None,
+                 force_decoder_type: Optional[str] = "mlp", 
+                 force_decoder_model_config: Optional[dict] = {"hidden_channels": 128}, **kwargs,    ### change 128 to 384?
                  ):
         super().__init__()
 
@@ -29,6 +36,14 @@ class FAENet(nn.Module):
 
         self.dropout_edge = float(kwargs.get("dropout_edge") or 0)
         self.dropout_lin = float(kwargs.get("dropout_lin") or 0)
+
+        self.regress_forces = regress_forces
+        self.force_decoder_type = force_decoder_type
+        self.force_decoder_model_config = force_decoder_model_config
+        self.act = act
+        self.output_disp = output_disp
+        self.output_N = output_N
+        self.output_M = output_M
 
         # Gaussian Basis
         # self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)   # To reactivate if use of RBF: outputs of dimension self.num_gaussians 
@@ -58,20 +73,23 @@ class FAENet(nn.Module):
         # Output block
         # self.output_block = OutputBlock(self.hidden_channels, self.dropout_lin)
 
-        # Force head
-        self.output_block = (
-            ForceDecoder(
-                self.force_decoder_type,
-                self.hidden_channels,
-                self.force_decoder_model_config,
-                self.act,        ######################   swish    //// difinir chacun des arguments /// changer de manière à avoir non pas 3 mais (3,18,18)
+        output_types = ["disp", "N", "M"]
+        self.output_blocks = {}
+        for output_type in output_types:
+            self.output_blocks[output_type] = (
+                ForceDecoder(
+                    self.force_decoder_type,
+                    self.hidden_channels,  # 128 or 384 (config)
+                    self.force_decoder_model_config,
+                    self.act,
+                    output_type,  # "disp", "N", "M"
+                )
+                if "direct" in self.regress_forces
+                else None
             )
-            if "direct" in self.regress_forces
-            else None
-        )
 
-        # Skip co
-        self.mlp_skip_co = nn.Linear((self.num_interactions + 1), 1)
+        # # Skip co // for energy
+        # self.mlp_skip_co = nn.Linear((self.num_interactions + 1), 1)
 
         
     # conserver les modifs faites avec ajouts forces
@@ -108,12 +126,14 @@ class FAENet(nn.Module):
 
         # Now change the predictions from energy only, to B, M, N // modify the output block
         for _, interaction in enumerate(self.interaction_blocks):
-            energy_skip_co.append(self.output_block(h, edge_index, edge_length, batch, data))
+            # energy_skip_co.append(self.output_block(h, edge_index, edge_length, batch, data))
             h = interaction(h, edge_index, e)
 
         # energy = self.output_block(h, edge_index, edge_length, batch, data=data)
-        disp, moments, forces = self.output_block(h, edge_index, edge_length, batch, data=data)
-        ### disp, moments, forces
+        disp = self.output_blocks["disp"](h)
+        forces = self.output_blocks["N"](h)
+        moments = self.output_blocks["M"](h)
+
 
         # energy_skip_co.append(energy)
         # energy = self.mlp_skip_co(torch.cat(energy_skip_co, dim=1))
@@ -276,7 +296,7 @@ class InteractionBlock(MessagePassing):
     
 
 
-## ça ne convient pas pour les forces
+## ça ne convient pas pour les forces // pas les bonnes sorties
 class OutputBlock(nn.Module):
     """Compute task-specific predictions from final atom representations."""
 
@@ -329,6 +349,7 @@ class OutputBlock(nn.Module):
         #     h = h * alpha
 
         # Global pooling
-        out = scatter(h, batch, dim=0, reduce="add")
+        # This is the sum_j operator on the pink graph
+        out = scatter(h, batch, dim=0, reduce="add")   ### we need to sum up the predictions across the nodes when we want to predict the energy: which is one value per structure (and not per node)
 
         return out

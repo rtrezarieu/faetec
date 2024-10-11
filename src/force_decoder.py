@@ -28,7 +28,7 @@ class ForceDecoder(nn.Module):
         (torch.Tensor): Predicted force vector per atom
     """
 
-    def __init__(self, type, input_channels, model_configs, act):
+    def __init__(self, type, input_channels, model_configs, act, output_type):
         super().__init__()
         self.type = type
         self.act = act
@@ -42,29 +42,17 @@ class ForceDecoder(nn.Module):
             self.norm = lambda n: nn.Identity()
         else:
             raise ValueError(f"Unknown norm type: {self.model_config['norm']}")
-        # Define the different force decoder models
-        if self.type == "simple":
-            assert "hidden_channels" in self.model_config
-            self.model = nn.Sequential(
-                nn.Linear(
-                    input_channels,
-                    self.model_config["hidden_channels"],
-                ),
-                LambdaLayer(act),
-                nn.Linear(self.model_config["hidden_channels"], 3),
-            )
-        elif self.type == "mlp":  # from forcenet
-            assert "hidden_channels" in self.model_config
-            self.model = nn.Sequential(
-                nn.Linear(
-                    input_channels,
-                    self.model_config["hidden_channels"],
-                ),
-                self.norm(self.model_config["hidden_channels"]),
-                LambdaLayer(act),
-                nn.Linear(self.model_config["hidden_channels"], 3),
-            )
-        elif self.type == "res":
+        
+        self.output_type = output_type
+        output_dims = {
+            "disp": self.model_config.get("disp_output_dim", 3),
+            "N": self.model_config.get("N_output_dim", 18),
+            "M": self.model_config.get("M_output_dim", 18),
+        }
+        assert self.output_type in output_dims, "Invalid output type specified"
+        output_dim = output_dims[self.output_type]
+
+        if self.type == "res":
             assert "hidden_channels" in self.model_config
             self.mlp_1 = nn.Sequential(
                 nn.Linear(
@@ -89,8 +77,9 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
-                nn.Linear(self.model_config["hidden_channels"], 3),
+                nn.Linear(self.model_config["hidden_channels"], output_dim),
             )
+
         elif self.type == "res_updown":
             assert "hidden_channels" in self.model_config
             self.mlp_1 = nn.Sequential(
@@ -124,7 +113,7 @@ class ForceDecoder(nn.Module):
                 ),
                 self.norm(self.model_config["hidden_channels"]),
                 LambdaLayer(act),
-                nn.Linear(self.model_config["hidden_channels"], 3),
+                nn.Linear(self.model_config["hidden_channels"], output_dim),
             )
         else:
             raise ValueError(f"Unknown force decoder type: `{self.type}`")
