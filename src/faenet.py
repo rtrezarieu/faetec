@@ -48,6 +48,23 @@ class FAENet(nn.Module):
         # Gaussian Basis
         # self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)   # To reactivate if use of RBF: outputs of dimension self.num_gaussians 
 
+        if not isinstance(self.regress_forces, str):
+            assert self.regress_forces is False or self.regress_forces is None, (
+                "regress_forces must be a string "
+                + "('', 'direct', 'direct_with_gradient_target') or False or None"
+            )
+            self.regress_forces = ""
+            
+        self.act = (
+            (getattr(nn.functional, self.act) if self.act != "swish" else swish)
+            if isinstance(self.act, str)
+            else self.act
+        )
+        assert callable(self.act), (
+            "act must be a callable function or a string "
+            + "describing that function in torch.nn.functional"
+        )
+
         # Embedding block
         self.embed_block = EmbeddingBlock(
             self.num_gaussians,
@@ -178,7 +195,7 @@ class EmbeddingBlock(nn.Module):
 
         # Edge embedding
         self.lin_e1 = nn.Linear(3, num_filters // 2)  # r_ij on the schema
-        self.lin_e12 = nn.Linear(num_gaussians + 2, num_filters - (num_filters // 2))  # d_ij, +2 for Beam/Column One-Hot vectors
+        self.lin_e12 = nn.Linear(num_gaussians, num_filters - (num_filters // 2))  # d_ij, +2 for Beam/Column One-Hot vectors
 
         self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
         self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
@@ -195,7 +212,7 @@ class EmbeddingBlock(nn.Module):
     def forward(self, f, f_norm, rel_pos, edge_attr, tag=None): # z
         # Edge embedding
         rel_pos = self.lin_e1(rel_pos)  # r_ij
-        edge_attr = self.lin_e12(edge_attr)  # d_ij
+        edge_attr = self.lin_e12(edge_attr)  # d_ij    
         e = torch.cat((rel_pos, edge_attr), dim=1)
         e = swish(e) 
         

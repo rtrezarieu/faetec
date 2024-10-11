@@ -44,7 +44,7 @@ all_N = torch.cat(all_N, dim=0)
 all_M = torch.cat(all_M, dim=0)
 
 # Calculate standard deviations
-std_disp = torch.std(all_disp)
+std_disp = torch.std(all_disp) #### faire l'écart-type des normes des vecteurs
 std_N = torch.std(all_N)
 std_M = torch.std(all_M)
 

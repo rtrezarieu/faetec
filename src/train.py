@@ -133,11 +133,17 @@ class Trainer():
     #     output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys} ### output devient un dictionnaire. ADAPTER le reste du code
     #     return output
 
-    def faenet_call(self, batch):  ####### à modifier pour décoder disp et N,M différemment
+    # Each element of the batch corresponds to one node of one structure
+    def faenet_call(self, batch):
         equivariance = self.config.get("equivariance", "")
-        output_keys = ["disp", "N", "M"]
-        outputs = {key: [] for key in output_keys}
-        disp_all, m_all, n_all = [], [], []
+        output_keys = ["disp", "N", "M"]  # output contains the predictions for a single frame
+        outputs = {key: [] for key in output_keys}  # outputs collects predictions from all frames
+        # disp_all, m_all, n_all = [], [], []
+
+        # if isinstance(batch, list):
+        #     batch = batch[0]
+        if not hasattr(batch, "nnodes"):
+            batch.nnodes = torch.unique(batch.batch, return_counts=True)[1]
 
         if equivariance != "frame_averaging":
             return self.model(batch)
@@ -147,40 +153,40 @@ class Trainer():
             # The frame's positions are computed by the data loader
             # If stochastic frame averaging is used, fa_pos will only have one element
             # If the full frame is used, it will have 8 elements in 3D and 4 in 2D (OC20)
-            for i in range(len(batch.fa_pos)):  ## batch.fa_pos a soit 1 soit 16 colonnes suivant qu'on soit en stochastic ou full fa
-                batch.pos = batch.fa_pos[i]
+            for i in range(len(batch.fa_pos)):  # i represents the frame index (0 to 15 in 3D)
+                batch.pos = batch.fa_pos[i] # [0] to unpack the external list
                 batch.forces = batch.fa_f[i]
                 output = self.model(deepcopy(batch))
-                for key in output_keys:
-                    outputs[key].append(output[key])
-                
                 
                 # Displacements predictions are rotated back to be equivariant
-                if outputs.get("disp") is not None:
-                    lmbda_f = torch.repeat_interleave(batch.lbda_f[i], batch.natoms, dim=0)
-                    fa_rot = torch.repeat_interleave(batch.fa_rot[i], batch.natoms, dim=0)  ##### recréer natoms en le renommant nnodes  /// fa_rot existe?
-                    # Transform disp to guarantee equivariance of FA method
+                if output.get("disp") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
+                    fa_rot = torch.repeat_interleave(batch.fa_rot[i], batch.nnodes, dim=0)
                     g_disp = (
-                        outputs["disp"]
+                        output["disp"]
                         .view(-1, 1, 3) # 3 for the 3D coordinates
-                        .bmm(fa_rot.transpose(1, 2).to(outputs["disp"].device))
-                        # .view(-1, 3)
+                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
                     )
-                    g_disp = (g_disp * lmbda_f).view(-1, 3)
-                    disp_all.append(g_disp)
+                    g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
+                    output["disp"] = g_disp
+                    # disp_all.append(g_disp)
 
-                if outputs.get("M") is not None:
-                    lmbda_f = torch.repeat_interleave(batch.lbda_f[i], batch.natoms, dim=0)
+                if output.get("M") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
                     # Transform disp to guarantee equivariance of FA method
-                    g_m = (outputs["M"].view(-1, 1, 3) * lmbda_f).view(-1, 3)
-                    m_all.append(g_m)
+                    g_m = (output["M"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    output["M"] = g_m
+                    # m_all.append(g_m)
 
-                if outputs.get("N") is not None:
-                    lmbda_f = torch.repeat_interleave(batch.lbda_f[i], batch.natoms, dim=0)
+                if output.get("N") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
                     # Transform disp to guarantee equivariance of FA method
-                    g_n = (outputs["N"].view(-1, 1, 3) * lmbda_f).view(-1, 3)
-                    n_all.append(g_n)
+                    g_n = (output["N"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    output["N"] = g_n
+                    # n_all.append(g_n)
 
+                for key in output_keys:
+                    outputs[key].append(output[key])  # Collecting predictions for all frames
 
             batch.pos = original_positions
             batch.forces = original_forces
@@ -196,7 +202,7 @@ class Trainer():
         # if len(gt_all) > 0 and all(y is not None for y in gt_all):
         #     outputs["forces_grad_target"] = sum(gt_all) / len(gt_all)
 
-        # Stack and average the outputs
+        # Average predictions over frames
         output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys} ### output devient un dictionnaire. ADAPTER le reste du code
 
         return output
@@ -213,7 +219,10 @@ class Trainer():
         for epoch in range(epochs):
             self.model.train()
             pbar = tqdm(self.train_loader)
-            mae_loss, mse_loss = 0, 0
+            total_mae_disp, total_mse_disp = 0, 0
+            total_mae_N, total_mse_N = 0, 0
+            total_mae_M, total_mse_M = 0, 0
+
             n_batches_epoch = 0
             for batch_idx, (batch) in enumerate(pbar):
                 # n_batches += len(batch[0].natoms)
@@ -222,21 +231,20 @@ class Trainer():
                 batch = batch[0].to(self.device)
                 self.optimizer.zero_grad()
                 start_time = 0
-                # start_time = torch.cuda.Event(enable_timing=True) ########################## A décommenter
+                start_time = torch.cuda.Event(enable_timing=True)
                 output = self.faenet_call(batch)
                 end_time = 0
-                # end_time = torch.cuda.Event(enable_timing=True) ########################## A décommenter
-                # start_time.record() ########################## A décommenter
-                # end_time.record() ########################## A décommenter
-                # torch.cuda.synchronize() ########################## A décommenter
-                # current_run_time = start_time.elapsed_time(end_time) ########################## A décommenter
+                end_time = torch.cuda.Event(enable_timing=True)
+                start_time.record()
+                end_time.record()
+                torch.cuda.synchronize()
+                current_run_time = start_time.elapsed_time(end_time)
                 current_run_time = 0
-                # run_time += current_run_time ########################## A décommenter
-                # target = batch.y_relaxed
+                run_time += current_run_time
                 target = batch.y
                 if self.normalizer:
                     # target_normed = self.normalizer.norm(target)
-                    target_normed = self.normalizer.norm({    ###### pas bête de passer par un dictionnaire pour pouvoir regrouper les coordonnées X, Y, Z // par contre il faut changer le calcul de la loss
+                    target_normed = self.normalizer.norm({
                         'disp': target[:, 0:3],
                         'N': target[:, 3:21],
                         'M': target[:, 21:39]
@@ -261,58 +269,96 @@ class Trainer():
                         'M': output["M"].reshape(-1, 18)
                     }
 
-                loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))   ### maybe the reshape operation will spit out an error (not numpy), but it's not very necessary. remove the reshape
+                loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))
                 loss_N = self.criterion(output["N"].reshape(-1, 18), target_normed["N"].reshape(-1, 18))
                 loss_M = self.criterion(output["M"].reshape(-1, 18), target_normed["M"].reshape(-1, 18))
                 # Losses combination (weights can be adjusted)
                 loss = loss_disp + loss_N + loss_M
-
-                # loss = self.criterion(output["energy"].reshape(-1), target_normed.reshape(-1))
                 loss.backward()
-                mae_loss_batch = mae(output_unnormed, target).detach()
-                mse_loss_batch = mse(output_unnormed, target).detach()
-                mae_loss += mae_loss_batch
-                mse_loss += mse_loss_batch
+
+                # Compute MAE and MSE for each target
+                mae_loss_disp = mae(output_unnormed["disp"], target_normed["disp"]).detach()
+                mae_loss_N = mae(output_unnormed["N"], target_normed["N"]).detach()
+                mae_loss_M = mae(output_unnormed["M"], target_normed["M"]).detach()
+
+                mse_loss_disp = mse(output_unnormed["disp"], target_normed["disp"]).detach()
+                mse_loss_N = mse(output_unnormed["N"], target_normed["N"]).detach()
+                mse_loss_M = mse(output_unnormed["M"], target_normed["M"]).detach()
+
+                # Accumulate losses across batches
+                total_mae_disp += mae_loss_disp
+                total_mse_disp += mse_loss_disp
+                total_mae_N += mae_loss_N
+                total_mse_N += mse_loss_N
+                total_mae_M += mae_loss_M
+                total_mse_M += mse_loss_M
+
+                # mae_loss_batch = mae(output_unnormed, target).detach()
+                # mse_loss_batch = mse(output_unnormed, target).detach()
+                # mae_loss += mae_loss_batch
+                # mse_loss += mse_loss_batch
+
                 grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
                 self.optimizer.step()
+
                 metrics = {
                     "train/loss": loss.detach().item(),
-                    "train/mae": mae_loss_batch.item(),
-                    "train/mse": mse_loss_batch.item(),
+                    "train/mae_disp": mae_loss_disp.item(),
+                    "train/mae_N": mae_loss_N.item(),
+                    "train/mae_M": mae_loss_M.item(),
+                    "train/mse_disp": mse_loss_disp.item(),
+                    "train/mse_N": mse_loss_N.item(),
+                    "train/mse_M": mse_loss_M.item(),
                     "train/batch_run_time": current_run_time,
                     "train/lr": self.optimizer.param_groups[0]['lr'],
                     "train/epoch": (epoch*len(self.train_loader) + batch_idx) / (len(self.train_loader))
                 }
+
                 if not self.debug:
                     if self.config['logger'] == 'wandb':
                         self.writer.log(metrics)
                     elif self.config['logger'] == 'comet':
                         self.writer.log_metrics(metrics)
+
                 pbar.set_description(f'Epoch {epoch+1}/{epochs} - Loss: {loss.detach().item():.6f}')
                 if self.scheduler:
                     self.scheduler.step()
+
+            # Log metrics per epoch
             if not self.debug:
                 if self.config['logger'] == 'wandb':
                     self.writer.log({
-                        "train/mae_epoch": mae_loss.item() / len(self.train_loader),
-                        "train/mse_epoch": mse_loss.item() / len(self.train_loader),
+                        "train/mae_disp_epoch": total_mae_disp,
+                        "train/mse_disp_epoch": total_mse_disp,
+                        "train/mae_N_epoch": total_mae_N,
+                        "train/mse_N_epoch": total_mse_N,
+                        "train/mae_M_epoch": total_mae_M,
+                        "train/mse_M_epoch": total_mse_M,
                     })
                 elif self.config['logger'] == 'comet':
                     self.writer.log_metrics({
-                        "train/mae_epoch": mae_loss.item() / len(self.train_loader),
-                        "train/mse_epoch": mse_loss.item() / len(self.train_loader),
+                        "train/mae_disp_epoch": total_mae_disp,
+                        "train/mse_disp_epoch": total_mse_disp,
+                        "train/mae_N_epoch": total_mae_N,
+                        "train/mse_N_epoch": total_mse_N,
+                        "train/mae_M_epoch": total_mae_M,
+                        "train/mse_M_epoch": total_mse_M,
                     })
+
             if self.device.type == 'cuda':
                 torch.cuda.empty_cache()
+
             if not self.debug:
                 if self.config['logger'] == 'wandb':
                     self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})
                 elif self.config['logger'] == 'comet':
                     self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))
+
             if epoch != epochs-1:
                 self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
+
         self.validate(epoch) # Validate on all splits
-        invariance_metrics = self.measure_model_invariance(self.model)
+        invariance_metrics = self.measure_model_invariance(self.model)   ### ereur ligne 380 : n_batches += batch[0].pos.shape[0]   à changer avec batch.nnodes?
         
         
     def validate(self, epoch, splits=None):
@@ -324,35 +370,88 @@ class Trainer():
                 continue
             split = list(self.config['dataset']['val'].keys())[i]
             pbar = tqdm(val_loader)
-            total_loss = 0
-            mae_loss, mse_loss = 0, 0
+            mae_loss_disp, mse_loss_disp = 0, 0
+            mae_loss_N, mse_loss_N = 0, 0
+            mae_loss_M, mse_loss_M = 0, 0
             n_batches = 0
+
             for batch_idx, (batch) in enumerate(pbar):
-                n_batches += batch[0].pos.shape[0]
+                n_batches += batch[0].pos.shape[0]   ################ peut-être à changer
                 batch = batch[0].to(self.device)
                 output = self.faenet_call(batch)
-                target = batch.y_relaxed
+                target = batch.y
+                # Normalize and denormalize outputs if a normalizer is used
                 if self.normalizer:
-                    output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1)) ########### à changer
+                    output_unnormed = {
+                        'disp': self.normalizer.denorm(output["disp"].reshape(-1, 3)),
+                        'N': self.normalizer.denorm(output["N"].reshape(-1, 18)),
+                        'M': self.normalizer.denorm(output["M"].reshape(-1, 18)),
+                    }
                 else:
-                    output_unnormed = output["energy"].reshape(-1)
-                mae_loss_batch = mae(output_unnormed, target).detach()
-                mse_loss_batch = mse(output_unnormed, target).detach()
-                mae_loss += mae_loss_batch
-                mse_loss += mse_loss_batch
-                pbar.set_description(f'Val {i} - Epoch {epoch+1} - MAE: {mae_loss.item()/(batch_idx+1):.6f}')
-            total_loss /= len(val_loader)
+                    output_unnormed = {
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18),
+                    }
+
+                # Extract and reshape the target data similarly
+                target_normed = {
+                    'disp': target[:, 0:3].reshape(-1, 3),
+                    'N': target[:, 3:21].reshape(-1, 18),
+                    'M': target[:, 21:39].reshape(-1, 18),
+                }
+
+                # Compute MAE and MSE for each output (disp, N, M)
+                mae_loss_disp_batch = mae(output_unnormed["disp"], target_normed["disp"]).detach()
+                mse_loss_disp_batch = mse(output_unnormed["disp"], target_normed["disp"]).detach()
+
+                mae_loss_N_batch = mae(output_unnormed["N"], target_normed["N"]).detach()
+                mse_loss_N_batch = mse(output_unnormed["N"], target_normed["N"]).detach()
+
+                mae_loss_M_batch = mae(output_unnormed["M"], target_normed["M"]).detach()
+                mse_loss_M_batch = mse(output_unnormed["M"], target_normed["M"]).detach()
+
+                # Accumulate the losses
+                mae_loss_disp += mae_loss_disp_batch
+                mse_loss_disp += mse_loss_disp_batch
+
+                mae_loss_N += mae_loss_N_batch
+                mse_loss_N += mse_loss_N_batch
+
+                mae_loss_M += mae_loss_M_batch
+                mse_loss_M += mse_loss_M_batch
+
+
+                pbar.set_description(
+                    f'Val {i} - Epoch {epoch+1} - MAE Disp: {mae_loss_disp.item()/(batch_idx+1):.6f}, '
+                    f'N: {mae_loss_N.item()/(batch_idx+1):.6f}, M: {mae_loss_M.item()/(batch_idx+1):.6f}'
+                )
+                # pbar.set_description(f'Val {i} - Epoch {epoch+1} - MAE: {mae_loss.item()/(batch_idx+1):.6f}')
+
+            # Calculate average losses over the entire validation set
+            total_mae_disp = mae_loss_disp.item() / len(val_loader)
+            total_mse_disp = mse_loss_disp.item() / len(val_loader)
+
+            total_mae_N = mae_loss_N.item() / len(val_loader)
+            total_mse_N = mse_loss_N.item() / len(val_loader)
+
+            total_mae_M = mae_loss_M.item() / len(val_loader)
+            total_mse_M = mse_loss_M.item() / len(val_loader)
+
             if not self.debug:
+                metrics = {
+                    f"{split}/mae_disp": total_mae_disp,
+                    f"{split}/mse_disp": total_mse_disp,
+                    f"{split}/mae_N": total_mae_N,
+                    f"{split}/mse_N": total_mse_N,
+                    f"{split}/mae_M": total_mae_M,
+                    f"{split}/mse_M": total_mse_M,
+                }
                 if self.config['logger'] == 'wandb':
-                    self.writer.log({
-                        f"{split}/mae": mae_loss.item() / len(val_loader),
-                        f"{split}/mse": mse_loss.item() / len(val_loader),
-                    })
+                    self.writer.log(metrics)
                 elif self.config['logger'] == 'comet':
-                    self.writer.log_metrics({
-                        f"{split}/mae": mae_loss.item() / len(val_loader),
-                        f"{split}/mse": mse_loss.item() / len(val_loader),
-                    })
+                    self.writer.log_metrics(metrics)
+
 
     def measure_model_invariance(self, model):
         model.eval()
