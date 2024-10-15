@@ -4,7 +4,6 @@ import os
 import random
 import pickle
 from tqdm import tqdm
-import subprocess
 import shutil
 import time
 
@@ -23,7 +22,6 @@ os.makedirs(val_dir, exist_ok=True)
 map_size = 2 * 1024 * 1024 * 1024  # 2 GB
 
 train_split_ratio = 0.9
-
 
 # Get all .pt files in the data directory
 all_files = [os.path.join(root, filename)
@@ -45,20 +43,22 @@ print(f"Total files: {len(all_files)}")
 print(f"Train files: {len(train_files)}")
 print(f"Validation files: {len(val_files)}")
 
-
 # Initialize LMDB environment
 train_env = lmdb.open(train_lmdb_path, map_size=map_size)
 val_env = lmdb.open(val_lmdb_path, map_size=map_size)
 train_txn = train_env.begin(write=True)  # Begin the transaction for writing
 val_txn = val_env.begin(write=True)  # Begin the transaction for writing
 
+# Initialize counters for train and validation keys
+train_counter = 0
+val_counter = 0
 
 # Iterate through all subdirectories and .pt files and store them in LMDB
 total_files = len(all_files)
 with tqdm(total=total_files, desc="Processing files") as pbar:
     for file_path in all_files:
         data = torch.load(file_path)
-        
+
         x = data.x
         edge_attr = data.edge_attr
         edge_index = data.edge_index
@@ -67,11 +67,6 @@ with tqdm(total=total_files, desc="Processing files") as pbar:
         pos = x[:, 3:6]
         forces = x[:, 9:12]
         beam_col = edge_attr[:, 0:2]
-
-        ### calculer la norme des B, N, M. Considérer chaque face comme 1 point de donnée. Trois valeurs en sortie pour B, N, M. * nombres de noeuds * nombres de structures
-        ### Calculer l'écart type de ces normes. 
-        ### récupérer ces valeurs pour les réinjecter dans le code (et non dans le config)
-
 
         # Create a dictionary to store in LMDB
         processed_data = {
@@ -82,19 +77,18 @@ with tqdm(total=total_files, desc="Processing files") as pbar:
             'y': y,
         }
 
-        # Store each structure with a unique key (e.g., filename or index)
-        key = f"{all_files.index(file_path)}".encode("ascii")
-        value = pickle.dumps(processed_data)  # Serialize the processed data
-        
-        # Store the key-value pair in LMDB
-        # txn.put(key, value)
+        # Store each structure with a unique key based on train/val split
         if file_path in train_files:
-            train_txn.put(key, value)
+            key = f"{train_counter}".encode("ascii")  # Use the train counter for train files
+            train_txn.put(key, pickle.dumps(processed_data))  # Serialize and store in LMDB
+            train_counter += 1  # Increment train counter
         elif file_path in val_files:
-            val_txn.put(key, value)
+            key = f"{val_counter}".encode("ascii")  # Use the val counter for val files
+            val_txn.put(key, pickle.dumps(processed_data))  # Serialize and store in LMDB
+            val_counter += 1  # Increment val counter
+
         # Update the progress bar
         pbar.update(1)
-
 
 # Commit the transaction and close the environment
 train_txn.commit()
@@ -110,16 +104,3 @@ shutil.move(os.path.join(train_lmdb_path, 'data.mdb'), os.path.join(train_dir, '
 shutil.move(os.path.join(val_lmdb_path, 'data.mdb'), os.path.join(val_dir, 'val.lmdb'))
 shutil.rmtree(train_lmdb_path)
 shutil.rmtree(val_lmdb_path)
-
-
-
-# No need to package into .tar.gz files
-# # Package the LMDB directories into tar.gz archives using subprocess
-# # subprocess.run(['tar', '-czvf', 'train.lmdb', '-C', train_dir, os.path.basename(train_lmdb_path)], check=True)
-# # shutil.move('train.lmdb', train_dir)
-# subprocess.run(['tar', '-czvf', os.path.join(train_dir, 'train.lmdb'), '-C', train_dir, 'train.mdb'], check=True)   #os.path.basename(train_lmdb_path)
-# subprocess.run(['tar', '-czvf', os.path.join(val_dir, 'val.lmdb'), '-C', val_dir, 'val.mdb'], check=True) #os.path.basename(val_lmdb_path)
-
-# # Remove the LMDB directories
-# shutil.rmtree(train_lmdb_path)
-# shutil.rmtree(val_lmdb_path)
