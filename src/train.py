@@ -102,7 +102,7 @@ class Trainer():
     # Valide sur une structure tournée plusieurs fois, si config['equivariance'] != 'data_augmentation'
     def load_val_loaders(self):
         self.val_loaders = []
-        for split in self.config['dataset']['val']: #### pas de split ici??
+        for split in self.config['dataset']['val']:
             transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
             val_dataset = BaseDataset(self.config['dataset']['val'][split], transform=transform)
             val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
@@ -112,12 +112,10 @@ class Trainer():
     # Each element of the batch corresponds to one node of one structure
     def faenet_call(self, batch):
         equivariance = self.config.get("equivariance", "")
-        output_keys = ["disp", "N", "M"]  # output contains the predictions for a single frame
-        outputs = {key: [] for key in output_keys}  # outputs collects predictions from all frames
+        output_keys = ["disp", "N", "M"]
+        outputs = {key: [] for key in output_keys}
         # disp_all, m_all, n_all = [], [], []
 
-        # if isinstance(batch, list):
-        #     batch = batch[0]
         if not hasattr(batch, "nnodes"):
             batch.nnodes = torch.unique(batch.batch, return_counts=True)[1]
 
@@ -186,23 +184,19 @@ class Trainer():
             total_mae_N, total_mse_N = 0, 0
             total_mae_M, total_mse_M = 0, 0
 
-            n_batches_epoch = 0
             for batch_idx, (batch) in enumerate(pbar):
-                # n_batches += len(batch[0].natoms)
-                n_batches += batch[0].pos.shape[0]      ######### erreur????   batch.nnodes = batch.natoms
-                n_batches_epoch += batch[0].pos.shape[0]  #################################  erreur????
                 batch = batch[0].to(self.device)
+                if not hasattr(batch, "nnodes"):
+                    batch.nnodes = torch.unique(batch.batch, return_counts=True)[1]
+                n_batches += len(batch.nnodes)
                 self.optimizer.zero_grad()
-                # start_time = 0      #############################  à commenter pour exe locale
                 # start_time = torch.cuda.Event(enable_timing=True)  #############################  à commenter pour exe locale
                 output = self.faenet_call(batch)
-                # end_time = 0  #############################  à commenter pour exe locale
                 # end_time = torch.cuda.Event(enable_timing=True)  #############################  à commenter pour exe locale
                 # start_time.record()  #############################  à commenter pour exe locale
                 # end_time.record()  #############################  à commenter pour exe locale
                 # torch.cuda.synchronize()  #############################  à commenter pour exe locale
                 # current_run_time = start_time.elapsed_time(end_time)  #############################  à commenter pour exe locale
-                # current_run_time = 0  #############################  à commenter pour exe locale
                 # run_time += current_run_time  #############################  à commenter pour exe locale
                 target = batch.y
                 if self.normalizer:
@@ -218,7 +212,6 @@ class Trainer():
                         'M': output["M"].reshape(-1, 18)
                     })
                 else:
-                    # target_normed = target
                     target_normed = {
                         'disp': target[:, 0:3],
                         'N': target[:, 3:21],
@@ -234,7 +227,6 @@ class Trainer():
                 loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))
                 loss_N = self.criterion(output["N"].reshape(-1, 18), target_normed["N"].reshape(-1, 18))
                 loss_M = self.criterion(output["M"].reshape(-1, 18), target_normed["M"].reshape(-1, 18))
-                # Losses combination (weights can be adjusted)
                 loss = loss_disp + loss_N + loss_M
                 loss.backward()
 
@@ -253,7 +245,7 @@ class Trainer():
                 total_mae_M += mae_loss_M
                 total_mse_M += mse_loss_M
 
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
+                # grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)         ############ à réimplémenter
                 self.optimizer.step()
 
                 metrics = {
@@ -311,9 +303,9 @@ class Trainer():
                     pass
 
             if epoch != epochs-1:
-                self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
+                self.validate(epoch, splits=[0]) # Validate on the first split (val_id) - No split for now, still functionning
 
-        self.validate(epoch) # Validate on all splits
+        self.validate(epoch)
         # invariance_metrics = self.measure_model_invariance(self.model)
         
         
@@ -329,10 +321,8 @@ class Trainer():
             mae_loss_disp, mse_loss_disp = 0, 0
             mae_loss_N, mse_loss_N = 0, 0
             mae_loss_M, mse_loss_M = 0, 0
-            n_batches = 0
 
             for batch_idx, (batch) in enumerate(pbar):
-                n_batches += batch[0].pos.shape[0]   ################ peut-être à changer         n_batches += len(batch[0].natoms)
                 batch = batch[0].to(self.device)
                 output = self.faenet_call(batch)
                 target = batch.y
@@ -378,12 +368,10 @@ class Trainer():
                 mae_loss_M += mae_loss_M_batch
                 mse_loss_M += mse_loss_M_batch
 
-
                 pbar.set_description(
                     f'Val {i} - Epoch {epoch+1} - MAE Disp: {mae_loss_disp.item()/(batch_idx+1):.6f}, '
                     f'N: {mae_loss_N.item()/(batch_idx+1):.6f}, M: {mae_loss_M.item()/(batch_idx+1):.6f}'
                 )
-                # pbar.set_description(f'Val {i} - Epoch {epoch+1} - MAE: {mae_loss.item()/(batch_idx+1):.6f}')
 
             # Calculate average losses over the entire validation set
             total_mae_disp = mae_loss_disp.item() / len(val_loader)
