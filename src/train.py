@@ -2,6 +2,7 @@ from comet_ml import Experiment
 import torch
 import wandb
 from tqdm import tqdm
+import numpy as np
 from copy import deepcopy
 import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -19,7 +20,6 @@ def transformations_list(config):
         return Compose(transform_list)
     else:
         return None
-
 
 class Trainer():
     def __init__(self, config, device="cpu", debug=False):
@@ -76,47 +76,100 @@ class Trainer():
     def load_train_loader(self):
         if self.config['dataset']['train'].get("normalize_labels", False):
             if self.config['dataset']['train']['normalize_labels']:
-                self.normalizer = Normalizer( mean=self.config['dataset']['train']['target_mean'], std=self.config['dataset']['train']['target_std'])
+                # self.normalizer = Normalizer(means=self.config['dataset']['train']['target_mean'], stds=self.config['dataset']['train']['target_std'])
+                self.normalizer = Normalizer(
+                    means={
+                        'disp': self.config['dataset']['train']['target_mean_disp'],
+                        'N': self.config['dataset']['train']['target_mean_N'],
+                        'M': self.config['dataset']['train']['target_mean_M']
+                    },
+                    stds={
+                        'disp': self.config['dataset']['train']['target_std_disp'],
+                        'N': self.config['dataset']['train']['target_std_N'],
+                        'M': self.config['dataset']['train']['target_std_M']
+                    }
+                )
             else:
                 self.normalizer = None
 
         self.parallel_collater = ParallelCollater() # To create graph batches
         self.transform = transformations_list(self.config)
+        
         train_dataset = BaseDataset(self.config['dataset']['train'], transform=self.transform)
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=True, num_workers=0, collate_fn=self.parallel_collater)
     
+    # Valide explicitement sur un set tourné
+    # Valide sur une structure tournée plusieurs fois, si config['equivariance'] != 'data_augmentation'
     def load_val_loaders(self):
         self.val_loaders = []
-        for split in self.config['dataset']['val']:
+        for split in self.config['dataset']['val']: #### pas de split ici??
             transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
             val_dataset = BaseDataset(self.config['dataset']['val'][split], transform=transform)
             val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
             self.val_loaders.append(val_loader)
     
+
+    # Each element of the batch corresponds to one node of one structure
     def faenet_call(self, batch):
         equivariance = self.config.get("equivariance", "")
-        outputs = []
+        output_keys = ["disp", "N", "M"]  # output contains the predictions for a single frame
+        outputs = {key: [] for key in output_keys}  # outputs collects predictions from all frames
+        # disp_all, m_all, n_all = [], [], []
+
+        # if isinstance(batch, list):
+        #     batch = batch[0]
+        if not hasattr(batch, "nnodes"):
+            batch.nnodes = torch.unique(batch.batch, return_counts=True)[1]
+
         if equivariance != "frame_averaging":
             return self.model(batch)
         else:
             original_positions = deepcopy(batch.pos)
-            if hasattr(batch, "cell"):
-                original_cell = deepcopy(batch.fa_cell)
+            original_forces = deepcopy(batch.forces)
             # The frame's positions are computed by the data loader
             # If stochastic frame averaging is used, fa_pos will only have one element
             # If the full frame is used, it will have 8 elements in 3D and 4 in 2D (OC20)
-            for i in range(len(batch.fa_pos)):
+            for i in range(len(batch.fa_pos)):  # i represents the frame index (0 to 15 in 3D)
                 batch.pos = batch.fa_pos[i]
-                if hasattr(batch, "cell"):
-                    batch.cell = batch.fa_cell[i]
+                batch.forces = batch.fa_f[i]
                 output = self.model(deepcopy(batch))
-                outputs.append(output["energy"])
+                
+                # Displacements predictions are rotated back to be equivariant
+                if output.get("disp") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
+                    fa_rot = torch.repeat_interleave(batch.fa_rot[i], batch.nnodes, dim=0)
+                    g_disp = (
+                        output["disp"]
+                        .view(-1, 1, 3) # 3 for the 3D coordinates
+                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
+                    )
+                    g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
+                    output["disp"] = g_disp
+                    # disp_all.append(g_disp)
+
+                if output.get("M") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
+                    g_m = (output["M"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    output["M"] = g_m
+                    # m_all.append(g_m)
+
+                if output.get("N") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
+                    g_n = (output["N"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    output["N"] = g_n
+                    # n_all.append(g_n)
+
+                for key in output_keys:
+                    outputs[key].append(output[key])
+
             batch.pos = original_positions
-            if hasattr(batch, "cell"):
-                batch.cell = original_cell
-        energy_prediction = torch.stack(outputs, dim=0).mean(dim=0)
-        output["energy"] = energy_prediction
+            batch.forces = original_forces
+
+        # Average predictions over frames
+        output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys}
+
         return output
+
 
     def train(self):
         log_interval = self.config["optimizer"].get("log_interval", 100)
@@ -129,77 +182,142 @@ class Trainer():
         for epoch in range(epochs):
             self.model.train()
             pbar = tqdm(self.train_loader)
-            mae_loss, mse_loss = 0, 0
+            total_mae_disp, total_mse_disp = 0, 0
+            total_mae_N, total_mse_N = 0, 0
+            total_mae_M, total_mse_M = 0, 0
+
             n_batches_epoch = 0
             for batch_idx, (batch) in enumerate(pbar):
-                n_batches += len(batch[0].natoms)
-                n_batches_epoch += len(batch[0].natoms)
+                # n_batches += len(batch[0].natoms)
+                n_batches += batch[0].pos.shape[0]      ######### erreur????   batch.nnodes = batch.natoms
+                n_batches_epoch += batch[0].pos.shape[0]  #################################  erreur????
                 batch = batch[0].to(self.device)
                 self.optimizer.zero_grad()
-                start_time = torch.cuda.Event(enable_timing=True)
+                # start_time = 0      #############################  à commenter pour exe locale
+                # start_time = torch.cuda.Event(enable_timing=True)  #############################  à commenter pour exe locale
                 output = self.faenet_call(batch)
-                end_time = torch.cuda.Event(enable_timing=True)
-                start_time.record()
-                end_time.record()
-                torch.cuda.synchronize()
-                current_run_time = start_time.elapsed_time(end_time)
-                run_time += current_run_time
-                target = batch.y_relaxed
+                # end_time = 0  #############################  à commenter pour exe locale
+                # end_time = torch.cuda.Event(enable_timing=True)  #############################  à commenter pour exe locale
+                # start_time.record()  #############################  à commenter pour exe locale
+                # end_time.record()  #############################  à commenter pour exe locale
+                # torch.cuda.synchronize()  #############################  à commenter pour exe locale
+                # current_run_time = start_time.elapsed_time(end_time)  #############################  à commenter pour exe locale
+                # current_run_time = 0  #############################  à commenter pour exe locale
+                # run_time += current_run_time  #############################  à commenter pour exe locale
+                target = batch.y
                 if self.normalizer:
-                    target_normed = self.normalizer.norm(target)
-                    output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    target_normed = self.normalizer.norm({
+                        'disp': target[:, 0:3],
+                        'N': target[:, 3:21],
+                        'M': target[:, 21:39]
+                    })
+                    # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    output_unnormed = self.normalizer.denorm({
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
+                    })
                 else:
-                    target_normed = target
-                    output_unnormed = output["energy"].reshape(-1)
-                loss = self.criterion(output["energy"].reshape(-1), target_normed.reshape(-1))
+                    # target_normed = target
+                    target_normed = {
+                        'disp': target[:, 0:3],
+                        'N': target[:, 3:21],
+                        'M': target[:, 21:39]
+                    }
+                    # output_unnormed = output["energy"].reshape(-1)
+                    output_unnormed = {
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
+                    }
+
+                loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))
+                loss_N = self.criterion(output["N"].reshape(-1, 18), target_normed["N"].reshape(-1, 18))
+                loss_M = self.criterion(output["M"].reshape(-1, 18), target_normed["M"].reshape(-1, 18))
+                # Losses combination (weights can be adjusted)
+                loss = loss_disp + loss_N + loss_M
                 loss.backward()
-                mae_loss_batch = mae(output_unnormed, target).detach()
-                mse_loss_batch = mse(output_unnormed, target).detach()
-                mae_loss += mae_loss_batch
-                mse_loss += mse_loss_batch
+
+                mae_loss_disp = mae(output_unnormed["disp"], target_normed["disp"]).detach()
+                mae_loss_N = mae(output_unnormed["N"], target_normed["N"]).detach()
+                mae_loss_M = mae(output_unnormed["M"], target_normed["M"]).detach()
+
+                mse_loss_disp = mse(output_unnormed["disp"], target_normed["disp"]).detach()
+                mse_loss_N = mse(output_unnormed["N"], target_normed["N"]).detach()
+                mse_loss_M = mse(output_unnormed["M"], target_normed["M"]).detach()
+
+                total_mae_disp += mae_loss_disp
+                total_mse_disp += mse_loss_disp
+                total_mae_N += mae_loss_N
+                total_mse_N += mse_loss_N
+                total_mae_M += mae_loss_M
+                total_mse_M += mse_loss_M
+
                 grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
                 self.optimizer.step()
+
                 metrics = {
                     "train/loss": loss.detach().item(),
-                    "train/mae": mae_loss_batch.item(),
-                    "train/mse": mse_loss_batch.item(),
-                    "train/batch_run_time": current_run_time,
+                    "train/mae_disp": mae_loss_disp.item(),
+                    "train/mae_N": mae_loss_N.item(),
+                    "train/mae_M": mae_loss_M.item(),
+                    "train/mse_disp": mse_loss_disp.item(),
+                    "train/mse_N": mse_loss_N.item(),
+                    "train/mse_M": mse_loss_M.item(),
+                    # "train/batch_run_time": current_run_time,    #############################  à commenter pour exe locale
                     "train/lr": self.optimizer.param_groups[0]['lr'],
                     "train/epoch": (epoch*len(self.train_loader) + batch_idx) / (len(self.train_loader))
                 }
+
                 if not self.debug:
                     if self.config['logger'] == 'wandb':
                         self.writer.log(metrics)
                     elif self.config['logger'] == 'comet':
                         self.writer.log_metrics(metrics)
+
                 pbar.set_description(f'Epoch {epoch+1}/{epochs} - Loss: {loss.detach().item():.6f}')
                 if self.scheduler:
                     self.scheduler.step()
+
             if not self.debug:
                 if self.config['logger'] == 'wandb':
                     self.writer.log({
-                        "train/mae_epoch": mae_loss.item() / len(self.train_loader),
-                        "train/mse_epoch": mse_loss.item() / len(self.train_loader),
+                        "train/mae_disp_epoch": total_mae_disp,
+                        "train/mse_disp_epoch": total_mse_disp,
+                        "train/mae_N_epoch": total_mae_N,
+                        "train/mse_N_epoch": total_mse_N,
+                        "train/mae_M_epoch": total_mae_M,
+                        "train/mse_M_epoch": total_mse_M,
                     })
                 elif self.config['logger'] == 'comet':
                     self.writer.log_metrics({
-                        "train/mae_epoch": mae_loss.item() / len(self.train_loader),
-                        "train/mse_epoch": mse_loss.item() / len(self.train_loader),
+                        "train/mae_disp_epoch": total_mae_disp,
+                        "train/mse_disp_epoch": total_mse_disp,
+                        "train/mae_N_epoch": total_mae_N,
+                        "train/mse_N_epoch": total_mse_N,
+                        "train/mae_M_epoch": total_mae_M,
+                        "train/mse_M_epoch": total_mse_M,
                     })
+
             if self.device.type == 'cuda':
                 torch.cuda.empty_cache()
+
             if not self.debug:
                 if self.config['logger'] == 'wandb':
-                    self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})
+                    # self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})  #############################  à commenter pour exe locale
+                    pass
                 elif self.config['logger'] == 'comet':
-                    self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))
+                    # self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))  #############################  à commenter pour exe locale
+                    pass
+
             if epoch != epochs-1:
                 self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
+
         self.validate(epoch) # Validate on all splits
-        invariance_metrics = self.measure_model_invariance(self.model)
+        # invariance_metrics = self.measure_model_invariance(self.model)
         
         
-    def validate(self, epoch, splits=None):
+    def validate(self, epoch, splits=None):    ##################################### comprendre et enlever les splits?
         self.model.eval()
         mae = torch.nn.L1Loss()
         mse = torch.nn.MSELoss()
@@ -208,35 +326,89 @@ class Trainer():
                 continue
             split = list(self.config['dataset']['val'].keys())[i]
             pbar = tqdm(val_loader)
-            total_loss = 0
-            mae_loss, mse_loss = 0, 0
+            mae_loss_disp, mse_loss_disp = 0, 0
+            mae_loss_N, mse_loss_N = 0, 0
+            mae_loss_M, mse_loss_M = 0, 0
             n_batches = 0
+
             for batch_idx, (batch) in enumerate(pbar):
-                n_batches += len(batch[0].natoms)
+                n_batches += batch[0].pos.shape[0]   ################ peut-être à changer         n_batches += len(batch[0].natoms)
                 batch = batch[0].to(self.device)
                 output = self.faenet_call(batch)
-                target = batch.y_relaxed
+                target = batch.y
+
                 if self.normalizer:
-                    output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
+                    output_unnormed = self.normalizer.denorm({
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
+                    })
                 else:
-                    output_unnormed = output["energy"].reshape(-1)
-                mae_loss_batch = mae(output_unnormed, target).detach()
-                mse_loss_batch = mse(output_unnormed, target).detach()
-                mae_loss += mae_loss_batch
-                mse_loss += mse_loss_batch
-                pbar.set_description(f'Val {i} - Epoch {epoch+1} - MAE: {mae_loss.item()/(batch_idx+1):.6f}')
-            total_loss /= len(val_loader)
+                    # output_unnormed = output["energy"].reshape(-1)
+                    output_unnormed = {
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
+                    }
+                    
+                target_unnormed = {
+                    'disp': target[:, 0:3],
+                    'N': target[:, 3:21],
+                    'M': target[:, 21:39]
+                }
+
+                # Compute MAE and MSE for each output (disp, N, M)
+                mae_loss_disp_batch = mae(output_unnormed["disp"], target_unnormed["disp"]).detach()
+                mse_loss_disp_batch = mse(output_unnormed["disp"], target_unnormed["disp"]).detach()
+
+                mae_loss_N_batch = mae(output_unnormed["N"], target_unnormed["N"]).detach()
+                mse_loss_N_batch = mse(output_unnormed["N"], target_unnormed["N"]).detach()
+
+                mae_loss_M_batch = mae(output_unnormed["M"], target_unnormed["M"]).detach()
+                mse_loss_M_batch = mse(output_unnormed["M"], target_unnormed["M"]).detach()
+
+                # Accumulate the losses
+                mae_loss_disp += mae_loss_disp_batch
+                mse_loss_disp += mse_loss_disp_batch
+
+                mae_loss_N += mae_loss_N_batch
+                mse_loss_N += mse_loss_N_batch
+
+                mae_loss_M += mae_loss_M_batch
+                mse_loss_M += mse_loss_M_batch
+
+
+                pbar.set_description(
+                    f'Val {i} - Epoch {epoch+1} - MAE Disp: {mae_loss_disp.item()/(batch_idx+1):.6f}, '
+                    f'N: {mae_loss_N.item()/(batch_idx+1):.6f}, M: {mae_loss_M.item()/(batch_idx+1):.6f}'
+                )
+                # pbar.set_description(f'Val {i} - Epoch {epoch+1} - MAE: {mae_loss.item()/(batch_idx+1):.6f}')
+
+            # Calculate average losses over the entire validation set
+            total_mae_disp = mae_loss_disp.item() / len(val_loader)
+            total_mse_disp = mse_loss_disp.item() / len(val_loader)
+
+            total_mae_N = mae_loss_N.item() / len(val_loader)
+            total_mse_N = mse_loss_N.item() / len(val_loader)
+
+            total_mae_M = mae_loss_M.item() / len(val_loader)
+            total_mse_M = mse_loss_M.item() / len(val_loader)
+
             if not self.debug:
+                metrics = {
+                    f"{split}/mae_disp": total_mae_disp,
+                    f"{split}/mse_disp": total_mse_disp,
+                    f"{split}/mae_N": total_mae_N,
+                    f"{split}/mse_N": total_mse_N,
+                    f"{split}/mae_M": total_mae_M,
+                    f"{split}/mse_M": total_mse_M,
+                }
                 if self.config['logger'] == 'wandb':
-                    self.writer.log({
-                        f"{split}/mae": mae_loss.item() / len(val_loader),
-                        f"{split}/mse": mse_loss.item() / len(val_loader),
-                    })
+                    self.writer.log(metrics)
                 elif self.config['logger'] == 'comet':
-                    self.writer.log_metrics({
-                        f"{split}/mae": mae_loss.item() / len(val_loader),
-                        f"{split}/mse": mse_loss.item() / len(val_loader),
-                    })
+                    self.writer.log_metrics(metrics)
+
 
     def measure_model_invariance(self, model):
         model.eval()
@@ -258,7 +430,7 @@ class Trainer():
             rotated_graph_3d, _, _ = rotater_3d(batch)
             reflected_graph, _, _ = reflector(batch)
 
-            n_batches += len(batch[0].natoms)
+            n_batches += batch[0].pos.shape[0]
 
             preds_original = self.faenet_call(batch.to(self.device))
             del batch

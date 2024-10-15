@@ -27,12 +27,12 @@ class FrameAveraging:
         elif self.equivariance == "data_augmentation":
             return data_augmentation(data, self.oc20)
         else:
-            data.fa_pos, data.fa_cell = frame_averaging(
-                data.pos, data.cell if hasattr(data, "cell") else None, self.fa_type, oc20=self.oc20
+            data.fa_pos, data.fa_f, data.fa_rot, data.lmbda_f = frame_averaging(
+                data.pos, data.forces, self.fa_type, oc20=self.oc20
             )
             return data
-
-def frame_averaging(pos, cell=None, fa_method="stochastic", oc20=True):
+        
+def frame_averaging(pos, f, fa_method="stochastic", oc20=False): # oc20=True
     if oc20:
         used_pos = pos[:, :2]
     else:
@@ -52,16 +52,20 @@ def frame_averaging(pos, cell=None, fa_method="stochastic", oc20=True):
     else:
         new_pos = pos[:, 2]
 
-    signs = list(product([1, -1], repeat=relative_pos.shape[1]))
-    basis_projections = [torch.tensor(x) for x in signs] # 8 or 4 possible combinations
+    signs = list(product([1, -1], repeat=relative_pos.shape[1] + 1))
+    basis_projections = [torch.tensor(x) for x in signs] # 16 combinations (or less for 2D)
+    lmbda_f = torch.max(torch.norm(f, dim=-1, keepdim=True))
     fa_poss = []
     fa_cells = []
+    fa_fs = []
+    all_rots = []
+    lmbda_fs = []
 
-    fa_cell = deepcopy(cell)
-
-    for pm in basis_projections: # pm for plus-minus
-        new_eigenvec = pm * eigenvec # Change the basis of the frame's element
+    for pm in basis_projections: # pm for plus-minus # pm is one combination of the frame
+        new_eigenvec = pm[:3] * eigenvec # Change the basis of the frame's element
+        new_lmbda_f = lmbda_f * pm[3] # Change the sign of the force
         fa_pos = relative_pos @ new_eigenvec # Project the positions on the new basis
+        fa_f = f @ new_eigenvec / new_lmbda_f
 
         if new_pos is not None:
             full_eigenvec = torch.eye(3)
@@ -69,17 +73,24 @@ def frame_averaging(pos, cell=None, fa_method="stochastic", oc20=True):
             full_eigenvec[:2, :2] = new_eigenvec
             new_eigenvec = full_eigenvec
 
-        if cell is not None:
-            fa_cell = cell @ new_eigenvec
-
         fa_poss.append(fa_pos)
-        fa_cells.append(fa_cell)
+        fa_fs.append(fa_f)
+        all_rots.append(new_eigenvec.unsqueeze(0))
+        lmbda_fs.append(new_lmbda_f)
+
+        # # Handle rare case where no R is positive orthogonal
+        # if all_fa_pos == []:
+        #     all_fa_pos.append(fa_pos)
+        #     all_cell.append(fa_cell)
+        #     all_rots.append(new_eigenvec.unsqueeze(0))
 
     if fa_method == "full":
-        return fa_poss, fa_cells
+        return fa_poss, fa_fs, all_rots, lmbda_fs
     else: # stochastic
-        index = torch.randint(0, len(fa_poss) - 1, (1,))
-        return [fa_poss[index]], [fa_cells[index]]
+        # index = torch.randint(0, len(fa_poss) - 1, (1,)) # la borne supérieure est exclue
+        index = torch.randint(0, len(fa_poss), (1,))
+        return [fa_poss[index]], [fa_fs[index]], [all_rots[index]], [lmbda_fs[index]]
+
 
 def data_augmentation(g, oc20=True):
     if not oc20:

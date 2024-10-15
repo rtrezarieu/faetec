@@ -4,11 +4,11 @@ logger: comet
 project: grm-faenet
 debug: False
 
-equivariance: "data_augmentation" # "" or "data_augmentation" or "frame_averaging"
-fa_type: "" # "" or "stochastic" or "full"
+equivariance: "frame_averaging" # "" or "data_augmentation" or "frame_averaging"
+fa_type: "stochastic" # "" or "stochastic" or "full"
 
 optimizer:
-    batch_size: 16
+    batch_size: 16 # number of structures per batch
     eval_batch_size: 8
     epochs: 15
     scheduler: CosineAnnealingLR
@@ -17,7 +17,7 @@ optimizer:
 
 defaults:
     - _self_
-    - dataset : oc20
+    - dataset : structures # oc20
     - model : faenet
   
 # Hydra config, do not change.

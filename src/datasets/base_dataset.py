@@ -15,25 +15,8 @@ class BaseDataset(Dataset):
         self.path = Path(self.config["src"])
 
         if not self.path.exists():
-            try:
-                if sys.platform.startswith('win'):
-                    print(f"Downloading {self.path}...")
-                    subprocess.run(
-                        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(Path("scripts/") / "download_data.ps1"), "-task", "is2re"]
-                    )
-                    print(f"Downloaded {self.path}.")
-                else:
-                    print(f"Downloading {self.path}...")
-                    subprocess.run(
-                        ["bash", str(Path("scripts/") / "download_data.sh"), "is2re"],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    print(f"Downloaded {self.path}.")
-            except Exception as e:
-                print(e)
-                raise FileNotFoundError(f"{self.path} does not exist.")
+            # Eventually add here the code to download the dataset, see oc20 source code.
+            raise FileNotFoundError(f"{self.path} does not exist.")
 
         self.env = lmdb.open(
             str(self.path),
@@ -46,7 +29,7 @@ class BaseDataset(Dataset):
         )
 
         self.num_samples = int(self.env.stat()["entries"])
-        self._keys = [f"{i}".encode("ascii") for i in range(self.num_samples)]
+        self._keys = [f"{i}".encode("ascii") for i in range(self.num_samples)]  # For oc20
 
         self.transform = transform
         self.fa_frames = fa_frames
@@ -55,11 +38,15 @@ class BaseDataset(Dataset):
         return self.num_samples
     
     def __getitem__(self, idx):
-        datapoint_pickle = self.env.begin().get(self._keys[idx])
+        key = self._keys[idx]
+        datapoint_pickle = self.env.begin().get(key)
+        if datapoint_pickle is None:
+            raise KeyError(f"Key {key} not found in the database.")
         data_object = pickle.loads(datapoint_pickle)
-        source = data_object.__dict__
-        if "_store" in source:
-            source = source["_store"]
+        source = data_object
+        # source = data_object.__dict__
+        # if "_store" in source:
+        #     source = source["_store"]
         data_object =  Data(**{k: v for k, v in source.items() if v is not None})
 
         if self.transform:
