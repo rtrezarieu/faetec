@@ -139,7 +139,7 @@ class Trainer():
                     g_disp = (
                         output["disp"]
                         .view(-1, 1, 3) # 3 for the 3D coordinates
-                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
+                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))       ##################  .device est défini quelque part?? 
                     )
                     g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
                     output["disp"] = g_disp
@@ -205,6 +205,11 @@ class Trainer():
                         'N': target[:, 3:21],
                         'M': target[:, 21:39]
                     })
+                    target_unnormed = {
+                        'disp': target[:, 0:3],
+                        'N': target[:, 3:21],
+                        'M': target[:, 21:39]
+                    }
                     # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
                     output_unnormed = self.normalizer.denorm({
                         'disp': output["disp"].reshape(-1, 3),
@@ -217,6 +222,7 @@ class Trainer():
                         'N': target[:, 3:21],
                         'M': target[:, 21:39]
                     }
+                    target_unnormed = target_normed
                     # output_unnormed = output["energy"].reshape(-1)
                     output_unnormed = {
                         'disp': output["disp"].reshape(-1, 3),
@@ -230,13 +236,13 @@ class Trainer():
                 loss = loss_disp + loss_N + loss_M
                 loss.backward()
 
-                mae_loss_disp = mae(output_unnormed["disp"], target_normed["disp"]).detach()
-                mae_loss_N = mae(output_unnormed["N"], target_normed["N"]).detach()
-                mae_loss_M = mae(output_unnormed["M"], target_normed["M"]).detach()
+                mae_loss_disp = mae(output_unnormed["disp"], target_unnormed["disp"]).detach()
+                mae_loss_N = mae(output_unnormed["N"], target_unnormed["N"]).detach()
+                mae_loss_M = mae(output_unnormed["M"], target_unnormed["M"]).detach()
 
-                mse_loss_disp = mse(output_unnormed["disp"], target_normed["disp"]).detach()
-                mse_loss_N = mse(output_unnormed["N"], target_normed["N"]).detach()
-                mse_loss_M = mse(output_unnormed["M"], target_normed["M"]).detach()
+                mse_loss_disp = mse(output_unnormed["disp"], target_unnormed["disp"]).detach()
+                mse_loss_N = mse(output_unnormed["N"], target_unnormed["N"]).detach()
+                mse_loss_M = mse(output_unnormed["M"], target_unnormed["M"]).detach()
 
                 total_mae_disp += mae_loss_disp
                 total_mse_disp += mse_loss_disp
