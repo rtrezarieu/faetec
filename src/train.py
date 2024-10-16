@@ -140,7 +140,7 @@ class Trainer():
                         output["disp"]
                         .view(-1, 1, 3) # 3 for the 3D coordinates
                         # .bmm(fa_rot.transpose(1, 2).to(self.device))
-                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
+                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))       ##################  .device est défini quelque part?? 
                     )
                     g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
                     output["disp"] = g_disp
