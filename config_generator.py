@@ -5,7 +5,7 @@ import pickle
 from tqdm import tqdm
 
 # Paths to the dataset files
-dataset_name = 'regular_random_gw'
+dataset_name = 'regular_gw_3x6x3'
 data_dir = f'data_to_convert/{dataset_name}'
 config_path = f'configs/dataset/structures.yaml'
 
@@ -52,7 +52,7 @@ std_M = torch.std(all_M)
 config = {
     'name': 'structures',
     'train': {
-        'src': 'data/regular_random_gw/train/train.lmdb',
+        'src': 'data/regular_gw_3x6x3/train/train.lmdb',
         'normalize_labels': True,
         'target_mean_disp': 0,
         'target_std_disp': std_disp.item(),
@@ -63,7 +63,7 @@ config = {
     },
     'val': {
         'val': {
-            'src': 'data/regular_random_gw/val/val.lmdb',
+            'src': 'data/regular_gw_3x6x3/val/val.lmdb',
         }
     },
     'oc20': False

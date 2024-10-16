@@ -7,7 +7,7 @@ from tqdm import tqdm
 import shutil
 import time
 
-dataset_name = 'regular_random_gw'
+dataset_name = 'regular_gw_3x6x3'
 data_dir = f'data_to_convert/{dataset_name}'
 train_dir = f'data/{dataset_name}/train'
 val_dir = f'data/{dataset_name}/val'
