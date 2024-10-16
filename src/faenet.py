@@ -70,9 +70,6 @@ class FAENet(nn.Module):
             self.num_gaussians,
             self.num_filters,
             self.hidden_channels,
-            self.tag_hidden_channels,
-            self.pg_hidden_channels,
-            self.phys_embeds,
         )
 
         # Interaction block
@@ -162,33 +159,24 @@ class FAENet(nn.Module):
             "M": moments
             # "hidden_state": h,
         }
-
         return preds
 
+
 class EmbeddingBlock(nn.Module):
-    def __init__(self, num_gaussians, num_filters, hidden_channels,
-                 tag_hidden_channels, pg_hidden_channels, phys_embeds,
-                 ):
+    """Initialise atom and edge representations."""
+
+    def __init__(
+        self, 
+        num_gaussians, 
+        num_filters, 
+        hidden_channels,
+        # act,
+        # second_layer_MLP,
+    ):
         super().__init__()
-        # Physics 
-        self.phys_emb = PhysEmbedding(props=phys_embeds, pg=True)
-        phys_hidden_channels = self.phys_emb.n_properties
-
-        # Period + group embeddings
-        self.period_embedding = nn.Embedding(self.phys_emb.period_size, pg_hidden_channels)
-        self.group_embedding = nn.Embedding(self.phys_emb.group_size, pg_hidden_channels)
-
-        # Tag embedding - adsorbate, surface catalyst, or deeper catalyst
-        self.tag_embedding = nn.Embedding(3, tag_hidden_channels)
-
-        # Global embedding - only 85 elements are used in the dataset
-        self.emb = nn.Embedding(
-            85,
-            hidden_channels
-            - tag_hidden_channels
-            - phys_hidden_channels
-            - 2 * pg_hidden_channels,
-        )
+        # self.act = act
+        
+        ################################ rajouter un embedding pour certains autres paramètres physiques à cet endroit
 
         # MLP
         self.lin = nn.Linear(hidden_channels, hidden_channels)
@@ -200,16 +188,22 @@ class EmbeddingBlock(nn.Module):
         self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
         self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
 
-        self.emb.reset_parameters()
-        self.tag_embedding.reset_parameters()
-        self.period_embedding.reset_parameters()
-        self.group_embedding.reset_parameters()
+        self.reset_parameters()
+
+    def reset_parameters(self):
         nn.init.xavier_uniform_(self.lin.weight)
         self.lin.bias.data.fill_(0)
         nn.init.xavier_uniform_(self.lin_e1.weight)
         self.lin_e1.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.lin_e12.weight)
+        self.lin_e12.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.lin_h1.weight)
+        self.lin_h1.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.lin_h12.weight)
+        self.lin_h12.bias.data.fill_(0)
 
-    def forward(self, f, f_norm, rel_pos, edge_attr, tag=None): # z
+
+    def forward(self, f, f_norm, rel_pos, edge_attr, tag=None): ############################### reprendre le forward en s'appuyant su rle code ref de faenet // avec une seconde couche d'activation optionnelle
         # Edge embedding
         rel_pos = self.lin_e1(rel_pos)  # r_ij
         edge_attr = self.lin_e12(edge_attr)  # d_ij    
@@ -221,7 +215,8 @@ class EmbeddingBlock(nn.Module):
         f_norm = self.lin_h12(f_norm)  # ||f_i||
         h = torch.cat((f, f_norm), dim=1)
         h = swish(h) 
-
+        
+        ################################################################# rajouter les deuxièmres layers de NN en s'appuyant sur le code de FAENet ref
 
         # Node embedding
         # Create atom embeddings based on its characteristic number
