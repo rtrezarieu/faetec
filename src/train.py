@@ -134,28 +134,29 @@ class Trainer():
                 
                 # Displacements predictions are rotated back to be equivariant
                 if output.get("disp") is not None:
-                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["disp"].device)
                     fa_rot = torch.repeat_interleave(batch.fa_rot[i], batch.nnodes, dim=0)
                     g_disp = (
                         output["disp"]
                         .view(-1, 1, 3) # 3 for the 3D coordinates
+                        # .bmm(fa_rot.transpose(1, 2).to(self.device))
                         .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
                     )
                     g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
                     output["disp"] = g_disp
                     # disp_all.append(g_disp)
 
-                if output.get("M") is not None:
-                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
-                    g_m = (output["M"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
-                    output["M"] = g_m
-                    # m_all.append(g_m)
-
                 if output.get("N") is not None:
-                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0)
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["N"].device)
                     g_n = (output["N"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
                     output["N"] = g_n
                     # n_all.append(g_n)
+
+                if output.get("M") is not None:
+                    lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["M"].device)
+                    g_m = (output["M"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    output["M"] = g_m
+                    # m_all.append(g_m)
 
                 for key in output_keys:
                     outputs[key].append(output[key])
@@ -190,14 +191,14 @@ class Trainer():
                     batch.nnodes = torch.unique(batch.batch, return_counts=True)[1]
                 n_batches += len(batch.nnodes)
                 self.optimizer.zero_grad()
-                # start_time = torch.cuda.Event(enable_timing=True)  #############################  à commenter pour exe locale
+                start_time = torch.cuda.Event(enable_timing=True)  
                 output = self.faenet_call(batch)
-                # end_time = torch.cuda.Event(enable_timing=True)  #############################  à commenter pour exe locale
-                # start_time.record()  #############################  à commenter pour exe locale
-                # end_time.record()  #############################  à commenter pour exe locale
-                # torch.cuda.synchronize()  #############################  à commenter pour exe locale
-                # current_run_time = start_time.elapsed_time(end_time)  #############################  à commenter pour exe locale
-                # run_time += current_run_time  #############################  à commenter pour exe locale
+                end_time = torch.cuda.Event(enable_timing=True)  
+                start_time.record()  
+                end_time.record()  
+                torch.cuda.synchronize()  
+                current_run_time = start_time.elapsed_time(end_time)  
+                run_time += current_run_time  
                 target = batch.y
                 if self.normalizer:
                     target_normed = self.normalizer.norm({
@@ -205,6 +206,11 @@ class Trainer():
                         'N': target[:, 3:21],
                         'M': target[:, 21:39]
                     })
+                    target_unnormed = {
+                        'disp': target[:, 0:3],
+                        'N': target[:, 3:21],
+                        'M': target[:, 21:39]
+                    }
                     # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
                     output_unnormed = self.normalizer.denorm({
                         'disp': output["disp"].reshape(-1, 3),
@@ -217,6 +223,7 @@ class Trainer():
                         'N': target[:, 3:21],
                         'M': target[:, 21:39]
                     }
+                    target_unnormed = target_normed
                     # output_unnormed = output["energy"].reshape(-1)
                     output_unnormed = {
                         'disp': output["disp"].reshape(-1, 3),
@@ -224,19 +231,26 @@ class Trainer():
                         'M': output["M"].reshape(-1, 18)
                     }
 
-                loss_disp = self.criterion(output["disp"].reshape(-1, 3), target_normed["disp"].reshape(-1, 3))
-                loss_N = self.criterion(output["N"].reshape(-1, 18), target_normed["N"].reshape(-1, 18))
-                loss_M = self.criterion(output["M"].reshape(-1, 18), target_normed["M"].reshape(-1, 18))
+                # print(output["disp"].shape)
+                # print(target_normed["disp"].shape)
+                # print(f"Batch size: {batch.batch.shape[0]}")
+                # print(f"Num nodes: {batch.nnodes}")
+                # print(f"Sum num nodes: {batch.nnodes.sum()}")
+                # print(batch.y.shape)
+
+                loss_disp = self.criterion(output["disp"].reshape(-1, 3).to(self.device), target_normed["disp"].reshape(-1, 3))
+                loss_N = self.criterion(output["N"].reshape(-1, 18).to(self.device), target_normed["N"].reshape(-1, 18))
+                loss_M = self.criterion(output["M"].reshape(-1, 18).to(self.device), target_normed["M"].reshape(-1, 18))
                 loss = loss_disp + loss_N + loss_M
                 loss.backward()
 
-                mae_loss_disp = mae(output_unnormed["disp"], target_normed["disp"]).detach()
-                mae_loss_N = mae(output_unnormed["N"], target_normed["N"]).detach()
-                mae_loss_M = mae(output_unnormed["M"], target_normed["M"]).detach()
+                mae_loss_disp = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
+                mae_loss_N = mae(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
+                mae_loss_M = mae(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
 
-                mse_loss_disp = mse(output_unnormed["disp"], target_normed["disp"]).detach()
-                mse_loss_N = mse(output_unnormed["N"], target_normed["N"]).detach()
-                mse_loss_M = mse(output_unnormed["M"], target_normed["M"]).detach()
+                mse_loss_disp = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
+                mse_loss_N = mse(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
+                mse_loss_M = mse(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
 
                 total_mae_disp += mae_loss_disp
                 total_mse_disp += mse_loss_disp
@@ -256,7 +270,7 @@ class Trainer():
                     "train/mse_disp": mse_loss_disp.item(),
                     "train/mse_N": mse_loss_N.item(),
                     "train/mse_M": mse_loss_M.item(),
-                    # "train/batch_run_time": current_run_time,    #############################  à commenter pour exe locale
+                    "train/batch_run_time": current_run_time,    
                     "train/lr": self.optimizer.param_groups[0]['lr'],
                     "train/epoch": (epoch*len(self.train_loader) + batch_idx) / (len(self.train_loader))
                 }
@@ -296,10 +310,10 @@ class Trainer():
 
             if not self.debug:
                 if self.config['logger'] == 'wandb':
-                    # self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})  #############################  à commenter pour exe locale
+                    self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})  
                     pass
                 elif self.config['logger'] == 'comet':
-                    # self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))  #############################  à commenter pour exe locale
+                    self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))  
                     pass
 
             if epoch != epochs-1:
@@ -349,14 +363,14 @@ class Trainer():
                 }
 
                 # Compute MAE and MSE for each output (disp, N, M)
-                mae_loss_disp_batch = mae(output_unnormed["disp"], target_unnormed["disp"]).detach()
-                mse_loss_disp_batch = mse(output_unnormed["disp"], target_unnormed["disp"]).detach()
+                mae_loss_disp_batch = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
+                mse_loss_disp_batch = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
 
-                mae_loss_N_batch = mae(output_unnormed["N"], target_unnormed["N"]).detach()
-                mse_loss_N_batch = mse(output_unnormed["N"], target_unnormed["N"]).detach()
+                mae_loss_N_batch = mae(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
+                mse_loss_N_batch = mse(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
 
-                mae_loss_M_batch = mae(output_unnormed["M"], target_unnormed["M"]).detach()
-                mse_loss_M_batch = mse(output_unnormed["M"], target_unnormed["M"]).detach()
+                mae_loss_M_batch = mae(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
+                mse_loss_M_batch = mse(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
 
                 # Accumulate the losses
                 mae_loss_disp += mae_loss_disp_batch
