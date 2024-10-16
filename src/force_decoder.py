@@ -131,6 +131,7 @@ class ForceDecoder(nn.Module):
                     layer.bias.data.fill_(0)
 
     def forward(self, h):
+        h = h.to(next(self.parameters()).device)
         if self.type == "res":
             return self.mlp_3(self.mlp_2(self.mlp_1(h)) + h)
         elif self.type == "res_updown":
