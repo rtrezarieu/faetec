@@ -77,7 +77,6 @@ class Trainer():
     def load_train_loader(self):
         if self.config['dataset']['train'].get("normalize_labels", False):
             if self.config['dataset']['train']['normalize_labels']:
-                # self.normalizer = Normalizer(means=self.config['dataset']['train']['target_mean'], stds=self.config['dataset']['train']['target_std'])
                 self.normalizer = Normalizer(
                     means={
                         'disp': self.config['dataset']['train']['target_mean_disp'],
@@ -105,8 +104,6 @@ class Trainer():
             print("No inconsistencies found in the training dataset.")
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
     
-    # Valide explicitement sur un set tourné
-    # Valide sur une structure tournée plusieurs fois, si config['equivariance'] != 'data_augmentation'
     def load_val_loaders(self):
         self.val_loaders = []
         for split in self.config['dataset']['val']:
@@ -116,7 +113,6 @@ class Trainer():
             self.val_loaders.append(val_loader)
     
 
-    # Each element of the batch corresponds to one node of one structure
     def faenet_call(self, batch):
         equivariance = self.config.get("equivariance", "")
         output_keys = ["disp", "N", "M"]
@@ -146,8 +142,7 @@ class Trainer():
                     g_disp = (
                         output["disp"]
                         .view(-1, 1, 3) # 3 for the 3D coordinates
-                        # .bmm(fa_rot.transpose(1, 2).to(self.device))
-                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))       ##################  .device est défini quelque part?? 
+                        .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
                     )
                     g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
                     output["disp"] = g_disp
@@ -268,7 +263,6 @@ class Trainer():
                 total_mse_N += mse_loss_N
                 total_mae_M += mae_loss_M
                 total_mse_M += mse_loss_M
-                # grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)         ############ à réimplémenter
                 self.optimizer.step()
 
                 metrics = {
@@ -326,13 +320,13 @@ class Trainer():
                     pass
 
             if epoch != epochs-1:
-                self.validate(epoch, splits=[0]) # Validate on the first split (val_id) - No split for now, still functionning
+                self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
 
         self.validate(epoch)
         # invariance_metrics = self.measure_model_invariance(self.model)
         
         
-    def validate(self, epoch, splits=None):    ##################################### comprendre et enlever les splits?
+    def validate(self, epoch, splits=None):
         self.model.eval()
         mae = torch.nn.L1Loss()
         mse = torch.nn.MSELoss()
@@ -353,14 +347,12 @@ class Trainer():
                 target = batch.y
 
                 if self.normalizer:
-                    # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
                     output_unnormed = self.normalizer.denorm({
                         'disp': output["disp"].reshape(-1, 3),
                         'N': output["N"].reshape(-1, 18),
                         'M': output["M"].reshape(-1, 18)
                     })
                 else:
-                    # output_unnormed = output["energy"].reshape(-1)
                     output_unnormed = {
                         'disp': output["disp"].reshape(-1, 3),
                         'N': output["N"].reshape(-1, 18),
@@ -373,7 +365,6 @@ class Trainer():
                     'M': target[:, 21:39]
                 }
 
-                # Compute MAE and MSE for each output (disp, N, M)
                 mae_loss_disp_batch = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()  
                 mse_loss_disp_batch = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
 
@@ -383,7 +374,6 @@ class Trainer():
                 mae_loss_M_batch = mae(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
                 mse_loss_M_batch = mse(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
 
-                # Accumulate the losses
                 mae_loss_disp += mae_loss_disp_batch
                 mse_loss_disp += mse_loss_disp_batch
 
@@ -416,7 +406,8 @@ class Trainer():
                     f'Rel N: {total_relerror_loss_N.item() / (batch_idx+1):.6f}, '
                     f'Rel M: {total_relerror_loss_M.item() / (batch_idx+1):.6f}'
                 )
-            # Calculate average losses over the entire validation set
+
+            # Calculate average losses over the entire validation set - len(val_loader) is the number of batches
             total_mae_disp = mae_loss_disp.item() / len(val_loader)
             total_mse_disp = mse_loss_disp.item() / len(val_loader)
 
