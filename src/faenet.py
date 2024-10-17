@@ -3,7 +3,10 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .gnn_utils import MessagePassing, GraphNorm,dropout_edge, scatter, swish
+from torch_geometric.nn import MessagePassing
+from torch_geometric.nn.norm import GraphNorm
+
+from .gnn_utils import dropout_edge, swish
 from src.force_decoder import ForceDecoder
 
 class FAENet(nn.Module):
@@ -82,19 +85,23 @@ class FAENet(nn.Module):
                 InteractionBlock(
                     self.hidden_channels,
                     self.num_filters,
-                    0
+                    self.act,
+                    self.mp_type,
+                    self.complex_mp,
+                    self.graph_norm,
                 )
-                for i in range(self.num_interactions)
+                for _ in range(self.num_interactions)
             ]
         )
-
+        
+        # Output block
         output_types = ["disp", "N", "M"]
         self.output_blocks = {}
         for output_type in output_types:
             self.output_blocks[output_type] = (
                 ForceDecoder(
                     self.force_decoder_type,
-                    self.hidden_channels,  # 128 or 384 (config)
+                    self.hidden_channels,
                     self.force_decoder_model_config,
                     self.act,
                     output_type,  # "disp", "N", "M"
@@ -236,124 +243,122 @@ class EmbeddingBlock(nn.Module):
         return h, e
 
 class InteractionBlock(MessagePassing):
-    def __init__(self, hidden_channels, num_filters, dropout, ):
+    """Updates atom representations through custom message passing."""
+
+    def __init__(
+        self,
+        hidden_channels,
+        num_filters,
+        act,
+        mp_type,
+        complex_mp,
+        graph_norm,
+    ):
         super(InteractionBlock, self).__init__()
+        self.act = act
+        self.mp_type = mp_type
         self.hidden_channels = hidden_channels
-        self.dropout = float(dropout)
+        self.complex_mp = complex_mp
+        self.graph_norm = graph_norm
+        if graph_norm:
+            self.graph_norm = GraphNorm(
+                hidden_channels if "updown" not in self.mp_type else num_filters
+            )
+            # self.graph_norm = GraphNorm(hidden_channels)
 
-        self.graph_norm = GraphNorm(hidden_channels)
+        if self.mp_type == "simple":
+            self.lin_h = nn.Linear(hidden_channels, hidden_channels)
 
-        self.lin_geom = nn.Linear(num_filters + 2 * hidden_channels, hidden_channels)
-        self.lin_h = nn.Linear(hidden_channels, hidden_channels)
-        self.other_mlp = nn.Linear(hidden_channels, hidden_channels)
+        elif self.mp_type == "updownscale":
+            self.lin_geom = nn.Linear(num_filters, num_filters)
+            self.lin_down = nn.Linear(hidden_channels, num_filters)
+            self.lin_up = nn.Linear(num_filters, hidden_channels)
 
-        nn.init.xavier_uniform_(self.lin_geom.weight)
-        self.lin_geom.bias.data.fill_(0)
-        nn.init.xavier_uniform_(self.other_mlp.weight)
-        self.other_mlp.bias.data.fill_(0)
-        nn.init.xavier_uniform_(self.lin_h.weight)
-        self.lin_h.bias.data.fill_(0)
+        elif self.mp_type == "updownscale_base":
+            self.lin_geom = nn.Linear(num_filters + 2 * hidden_channels, num_filters)
+            self.lin_down = nn.Linear(hidden_channels, num_filters)
+            self.lin_up = nn.Linear(num_filters, hidden_channels)
+
+        elif self.mp_type == "updown_local_env":
+            self.lin_down = nn.Linear(hidden_channels, num_filters)
+            self.lin_geom = nn.Linear(num_filters, num_filters)
+            self.lin_up = nn.Linear(2 * num_filters, hidden_channels)
+
+        else:  # base
+            self.lin_geom = nn.Linear(
+                num_filters + 2 * hidden_channels, hidden_channels
+            )
+            self.lin_h = nn.Linear(hidden_channels, hidden_channels)
+
+        if self.complex_mp:
+            self.other_mlp = nn.Linear(hidden_channels, hidden_channels)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        if self.mp_type != "simple":
+            nn.init.xavier_uniform_(self.lin_geom.weight)
+            self.lin_geom.bias.data.fill_(0)
+        if self.complex_mp:
+            nn.init.xavier_uniform_(self.other_mlp.weight)
+            self.other_mlp.bias.data.fill_(0)
+        if self.mp_type in {"updownscale", "updownscale_base", "updown_local_env"}:
+            nn.init.xavier_uniform_(self.lin_up.weight)
+            self.lin_up.bias.data.fill_(0)
+            nn.init.xavier_uniform_(self.lin_down.weight)
+            self.lin_down.bias.data.fill_(0)
+        else:
+            nn.init.xavier_uniform_(self.lin_h.weight)
+            self.lin_h.bias.data.fill_(0)
 
     def forward(self, h, edge_index, e):
         # Edge embedding
-        if self.dropout > 0:
-            h = F.dropout(h, p=self.dropout, training=self.training)
-        e = torch.cat([e, h[edge_index[0]], h[edge_index[1]]], dim=1)
-        e = swish(self.lin_geom(e)) # fij
+        if self.mp_type in {"base", "updownscale_base"}:
+            e = torch.cat([e, h[edge_index[0]], h[edge_index[1]]], dim=1)
 
+        if self.mp_type in {
+            "updownscale",
+            "base",
+            "updownscale_base",
+        }:
+            e = self.act(self.lin_geom(e)) # fij graph convolution filter
+
+        # --- Message Passing block --
+
+        if self.mp_type == "updownscale" or self.mp_type == "updownscale_base":
+            h = self.act(self.lin_down(h))  # downscale node rep.
+            h = self.propagate(edge_index, x=h, W=e)  # propagate
+            if self.graph_norm:
+                h = self.act(self.graph_norm(h))
+            h = self.act(self.lin_up(h))  # upscale node rep.
+
+        elif self.mp_type == "updown_local_env":
+            h = self.act(self.lin_down(h))
+            chi = self.propagate(edge_index, x=h, W=e, local_env=True)
+            e = self.lin_geom(e)
+            h = self.propagate(edge_index, x=h, W=e)  # propagate
+            if self.graph_norm:
+                h = self.act(self.graph_norm(h))
+            h = torch.cat((h, chi), dim=1)
+            h = self.lin_up(h)
+
+        elif self.mp_type in {"base", "simple"}:
+            h = self.propagate(edge_index, x=h, W=e)  # propagate: sum of hj * fij
+            if self.graph_norm:
+                h = self.act(self.graph_norm(h))
+            h = self.act(self.lin_h(h))
+
+        else:
+            raise ValueError("mp_type provided does not exist")
+        
         # Message passing
-        h = self.propagate(edge_index, x=h, W=e) # somme des hj * fij
-        h = swish(self.graph_norm(h)) # Pourquoi normalisation à cet endroit? 
-        h = F.dropout(h, p=self.dropout, training=self.training)
-        h = swish(self.lin_h(h)) # 1ère couche du MLP
-        h = F.dropout(h, p=self.dropout, training=self.training)
-        h = swish(self.other_mlp(h)) # 2nde couche du MLP
+        if self.complex_mp:
+            h = self.act(self.other_mlp(h))
 
         return h
 
-    def message(self, x_j, W):
-        return x_j * W        # hj * fij produit terme à terme
-
-# class OutputBlock(nn.Module):
-#     def __init__(self, hidden_channels, dropout):
-#         super().__init__()
-#         self.dropout = float(dropout)
-#         self.lin1 = nn.Linear(hidden_channels, hidden_channels // 2)  # MLP à 2 couches, la dimension intermédiaire = dimension d'entrée divisée par 2
-#         self.lin2 = nn.Linear(hidden_channels // 2, 1)
-#         self.w_lin = nn.Linear(hidden_channels, 1)
-
-#     def forward(self, h, edge_index, edge_weight, batch, data=None):
-#         alpha = self.w_lin(h)
-
-#         # MLP
-#         h = F.dropout(h, p=self.dropout, training=self.training)
-#         h = self.lin1(h)
-#         h = swish(h)
-#         h = F.dropout(h, p=self.dropout, training=self.training)
-#         h = self.lin2(h)
-#         h = h * alpha
-
-#         # Pooling
-#         out = scatter(h, batch, dim=0, reduce="add")
-
-#         return out
-    
-
-
-## ça ne convient pas pour les forces // pas les bonnes sorties
-class OutputBlock(nn.Module):
-    """Compute task-specific predictions from final atom representations."""
-
-    def __init__(self, energy_head, hidden_channels, act, out_dim=1):    ### rajouter act = swish dans l'appel
-        super().__init__()
-        self.energy_head = energy_head
-        self.act = act
-
-        self.lin1 = nn.Linear(hidden_channels, hidden_channels // 2)
-        self.lin2 = nn.Linear(hidden_channels // 2, out_dim)
-
-        # if self.energy_head == "weighted-av-final-embeds":
-        #     self.w_lin = nn.Linear(hidden_channels, 1)
-
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.lin1.weight)
-        self.lin1.bias.data.fill_(0)
-        nn.init.xavier_uniform_(self.lin2.weight)
-        self.lin2.bias.data.fill_(0)
-        # if self.energy_head == "weighted-av-final-embeds":
-        #     nn.init.xavier_uniform_(self.w_lin.weight)
-        #     self.w_lin.bias.data.fill_(0)
-
-    def forward(self, h, edge_index, edge_weight, batch, alpha):
-        """Forward pass of the Output block.
-        Called in FAENet to make prediction from final atom representations.
-
-        Args:
-            h (tensor): atom representations. (num_atoms, hidden_channels)
-            edge_index (tensor): adjacency matrix. (2, num_edges)
-            edge_weight (tensor): edge weights. (num_edges, )
-            batch (tensor): batch indices. (num_atoms, )
-            alpha (tensor): atom attention weights for late energy head. (num_atoms, )
-
-        Returns:
-            (tensor): graph-level representation (e.g. energy prediction)
-        """
-        # if self.energy_head == "weighted-av-final-embeds":
-        #     alpha = self.w_lin(h)
-
-        # MLP
-        h = self.lin1(h)
-        h = self.act(h)
-        h = self.lin2(h)
-
-        # if self.energy_head in {
-        #     "weighted-av-initial-embeds",
-        #     "weighted-av-final-embeds",
-        # }:
-        #     h = h * alpha
-
-        # Global pooling
-        # This is the sum_j operator on the pink graph
-        out = scatter(h, batch, dim=0, reduce="add")   ### we need to sum up the predictions across the nodes when we want to predict the energy: which is one value per structure (and not per node)
-
-        return out
+    def message(self, x_j, W, local_env=None):
+        if local_env is not None:
+            return W
+        else:
+            return x_j * W # hj * fij produit terme à terme     

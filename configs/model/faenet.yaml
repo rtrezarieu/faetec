@@ -8,6 +8,9 @@ num_gaussians: 1 # 104
 dropout_edge: 0.0
 cutoff: 6.0
 second_layer_MLP: true
+mp_type: base  # Message Passing type {'base', 'simple', 'updownscale', 'updownscale_base'}
+graph_norm: True
+complex_mp: True  # 2-layer MLP in Interaction blocks
 disp_output_dim: 3
 N_output_dim: 18
 M_output_dim: 18 
