@@ -3,50 +3,52 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .gnn_utils import MessagePassing, GraphNorm, GaussianSmearing, dropout_edge, radius_graph, get_pbc_distances, scatter
-from .modules.phys_embedding import PhysEmbedding
+from .gnn_utils import MessagePassing, GraphNorm,dropout_edge, scatter, swish
 from src.force_decoder import ForceDecoder
 
-def swish(x):
-    return x * torch.sigmoid(x)
-
 class FAENet(nn.Module):
-    def __init__(self, cutoff=6.0, use_pbc=True, max_num_neighbors=40,
-                 num_gaussians=1, num_filters=128, hidden_channels=128,   # num_gaussians = 50 if RBF active
-                 tag_hidden_channels=32, pg_hidden_channels=32, 
-                 phys_embeds=True, num_interactions=4,
-                 output_disp=3, output_N=18, output_M=18,
-                 act: str = "swish",
-                 regress_forces: Optional[str] = None,
-                 force_decoder_type: Optional[str] = "mlp", 
-                 force_decoder_model_config: Optional[dict] = {"hidden_channels": 128}, **kwargs,    ### change 128 to 384?
-                 ):
+    #### add description
+
+    def __init__(
+        self, 
+        cutoff: float = 6.0,
+        act: str = "swish",
+        hidden_channels: int = 128,   ######### à vérifier
+        num_interactions: int = 6,   ######################################### IMPORTANT: adapter ce nombre de couches au dataset
+        num_gaussians: int = 1, # num_gaussians = 50 if RBF active
+        num_filters: int = 128,
+        second_layer_MLP: bool = True, ## tester avec et sans
+
+        mp_type: str = "updownscale_base",   ### message passing type, à comprendre et à implémenter
+        graph_norm: bool = True,
+        complex_mp: bool = False,
+
+        output_disp: int = 3, 
+        output_N: int = 18, 
+        output_M: int = 18,
+        regress_forces: Optional[str] = None,
+        force_decoder_type: Optional[str] = "mlp", 
+        force_decoder_model_config: Optional[dict] = {"hidden_channels": 128}, **kwargs,    ### change 128 to 384?
+    ):
         super().__init__()
 
         self.cutoff = cutoff
-        self.hidden_channels = hidden_channels
-        self.max_num_neighbors = max_num_neighbors
-        self.num_filters = num_filters
-        self.num_gaussians = num_gaussians
-        self.num_interactions = num_interactions
-        self.pg_hidden_channels = pg_hidden_channels
-        self.phys_embeds = phys_embeds
-        self.tag_hidden_channels = tag_hidden_channels
-        self.use_pbc = use_pbc
-
-        self.dropout_edge = float(kwargs.get("dropout_edge") or 0)
-        self.dropout_lin = float(kwargs.get("dropout_lin") or 0)
-
-        self.regress_forces = regress_forces
-        self.force_decoder_type = force_decoder_type
-        self.force_decoder_model_config = force_decoder_model_config
         self.act = act
+        self.hidden_channels = hidden_channels
+        self.num_interactions = num_interactions
+        self.num_gaussians = num_gaussians
+        self.num_filters = num_filters
+        self.second_layer_MLP = second_layer_MLP
+        self.mp_type = mp_type
+        self.graph_norm = graph_norm
+        self.complex_mp = complex_mp
         self.output_disp = output_disp
         self.output_N = output_N
         self.output_M = output_M
-
-        # Gaussian Basis
-        # self.distance_expansion = GaussianSmearing(0.0, self.cutoff, self.num_gaussians)   # To reactivate if use of RBF: outputs of dimension self.num_gaussians 
+        self.regress_forces = regress_forces
+        self.force_decoder_type = force_decoder_type
+        self.force_decoder_model_config = force_decoder_model_config
+        self.dropout_edge = float(kwargs.get("dropout_edge") or 0)
 
         if not isinstance(self.regress_forces, str):
             assert self.regress_forces is False or self.regress_forces is None, (
@@ -70,6 +72,8 @@ class FAENet(nn.Module):
             self.num_gaussians,
             self.num_filters,
             self.hidden_channels,
+            self.act,
+            self.second_layer_MLP,
         )
 
         # Interaction block
@@ -83,9 +87,6 @@ class FAENet(nn.Module):
                 for i in range(self.num_interactions)
             ]
         )
-
-        # Output block
-        # self.output_block = OutputBlock(self.hidden_channels, self.dropout_lin)
 
         output_types = ["disp", "N", "M"]
         self.output_blocks = {}
@@ -102,11 +103,7 @@ class FAENet(nn.Module):
                 else None
             )
 
-        # # Skip co // for energy
-        # self.mlp_skip_co = nn.Linear((self.num_interactions + 1), 1)
 
-        
-    # conserver les modifs faites avec ajouts forces
     def forward(self, data):
         # z = data.atomic_numbers.long()
         pos = data.pos
@@ -141,7 +138,7 @@ class FAENet(nn.Module):
         # Now change the predictions from energy only, to B, M, N // modify the output block
         for _, interaction in enumerate(self.interaction_blocks):
             # energy_skip_co.append(self.output_block(h, edge_index, edge_length, batch, data))
-            h = interaction(h, edge_index, e)
+            h = h + interaction(h, edge_index, e)
 
         # energy = self.output_block(h, edge_index, edge_length, batch, data=data)
         disp = self.output_blocks["disp"](h)
@@ -170,16 +167,17 @@ class EmbeddingBlock(nn.Module):
         num_gaussians, 
         num_filters, 
         hidden_channels,
-        # act,
-        # second_layer_MLP,
+        act,
+        second_layer_MLP,
     ):
         super().__init__()
-        # self.act = act
-        
-        ################################ rajouter un embedding pour certains autres paramètres physiques à cet endroit
+        self.act = act
+        self.second_layer_MLP = second_layer_MLP
 
         # MLP
-        self.lin = nn.Linear(hidden_channels, hidden_channels)
+        # self.lin = nn.Linear(hidden_channels, hidden_channels)  # For edge embeddings
+        # if self.second_layer_MLP:
+        #     self.lin_2 = nn.Linear(hidden_channels, hidden_channels)
 
         # Edge embedding
         self.lin_e1 = nn.Linear(3, num_filters // 2)  # r_ij on the schema
@@ -188,11 +186,15 @@ class EmbeddingBlock(nn.Module):
         self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
         self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
 
+        if self.second_layer_MLP:
+            self.lin_e2 = nn.Linear(num_filters, num_filters)
+            self.lin_h2 = nn.Linear(hidden_channels, hidden_channels)
+
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.lin.weight)
-        self.lin.bias.data.fill_(0)
+        # nn.init.xavier_uniform_(self.lin.weight)
+        # self.lin.bias.data.fill_(0)
         nn.init.xavier_uniform_(self.lin_e1.weight)
         self.lin_e1.bias.data.fill_(0)
         nn.init.xavier_uniform_(self.lin_e12.weight)
@@ -201,45 +203,35 @@ class EmbeddingBlock(nn.Module):
         self.lin_h1.bias.data.fill_(0)
         nn.init.xavier_uniform_(self.lin_h12.weight)
         self.lin_h12.bias.data.fill_(0)
+        if self.second_layer_MLP:
+            # nn.init.xavier_uniform_(self.lin_2.weight)
+            # self.lin_2.bias.data.fill_(0)
+            nn.init.xavier_uniform_(self.lin_e2.weight)
+            self.lin_e2.bias.data.fill_(0)
+            nn.init.xavier_uniform_(self.lin_h2.weight)
+            self.lin_h2.bias.data.fill_(0)
 
-
-    def forward(self, f, f_norm, rel_pos, edge_attr, tag=None): ############################### reprendre le forward en s'appuyant su rle code ref de faenet // avec une seconde couche d'activation optionnelle
+    def forward(self, f, f_norm, rel_pos, edge_attr, tag=None):
         # Edge embedding
         rel_pos = self.lin_e1(rel_pos)  # r_ij
         edge_attr = self.lin_e12(edge_attr)  # d_ij    
         e = torch.cat((rel_pos, edge_attr), dim=1)
-        e = swish(e) 
-        
+        e = self.act(e)
 
         f = self.lin_h1(f) # f_i
         f_norm = self.lin_h12(f_norm)  # ||f_i||
         h = torch.cat((f, f_norm), dim=1)
-        h = swish(h) 
+        h = self.act(h)
         
-        ################################################################# rajouter les deuxièmres layers de NN en s'appuyant sur le code de FAENet ref
+        if self.second_layer_MLP:
+            # e = self.lin_e2(e)
+            e = self.act(self.lin_e2(e))
+            # h = self.lin_h2(h)
+            h = self.act(self.lin_h2(h))
 
-        # Node embedding
-        # Create atom embeddings based on its characteristic number
-        # h = self.emb(z)
-
-        # if self.phys_emb.device != h.device:
-        #     self.phys_emb = self.phys_emb.to(h.device)
-
-        # # Concat tag embedding
-        # h_tag = self.tag_embedding(tag)
-        # h = torch.cat((h, h_tag), dim=1)
-
-        # # Concat physics embeddings
-        # h_phys = self.phys_emb.properties[z]
-        # h = torch.cat((h, h_phys), dim=1)
-
-        # # Concat period & group embedding
-        # h_period = self.period_embedding(self.phys_emb.period[z])
-        # h_group = self.group_embedding(self.phys_emb.group[z])
-        # h = torch.cat((h, h_period, h_group), dim=1)
-
-        # MLP
-        # h = swish(self.lin(h)) # We keep this MLP, for h. h stores the information while e filters? TO TEST
+        """
+        Placeholder for edge embeddings
+        """
 
         return h, e
 

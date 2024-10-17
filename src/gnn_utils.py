@@ -45,22 +45,6 @@ def dropout_edge(edge_index, p=0.5, training=False):
     edge_index = edge_index[:, mask]
     return edge_index
 
-def radius_graph(x, r, batch=None, max_num_neighbors=None):
-    """Constructs a graph based on vertex proximity."""
-    distance_matrix = torch.cdist(x, x, p=2)
-    adj_matrix = distance_matrix <= r
-
-    if batch is not None:
-        batch_x = batch.unsqueeze(0) == batch.unsqueeze(1)
-        adj_matrix = adj_matrix * batch_x
-    
-    edge_index = adj_matrix.nonzero(as_tuple=False).t().contiguous()
-
-    if max_num_neighbors is not None:
-        raise NotImplementedError("max_num_neighbors is not implemented yet")
-    
-    return edge_index
-
 def get_pbc_distances(x, edge_index, cell, cell_offsets, neighbors):
     """Compute the pairwise distances of a set of points, taking into account
     the periodic boundary conditions."""
@@ -88,6 +72,26 @@ def get_pbc_distances(x, edge_index, cell, cell_offsets, neighbors):
     out["distance_vec"] = distance_vectors[nonzero_idx]
 
     return out
+
+def node_accuracy_error(output, target, accuracy_threshold=0.1):
+    """
+    Calculate relative accuracy between output and target using a threshold.
+    Returns the sum of the relative accuracies and the number of elements used.
+    """
+    device = output.device
+    condition = torch.abs(target) > accuracy_threshold
+
+    ones = torch.ones(target.shape).to(device)[condition]
+    zeros = torch.zeros(target.shape).to(device)[condition]
+    relative_accuracy = torch.max(ones - torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition])), zeros)
+    relative_error = torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition]))
+
+    # return relative_accuracy.sum(), torch.numel(relative_accuracy)
+    return relative_accuracy.sum(), relative_error.sum(), torch.numel(relative_accuracy)
+
+def swish(x):
+    """Swish activation function"""
+    return torch.nn.functional.silu(x)
 
 class GraphNorm(nn.Module):
     """Graph normalization layer"""

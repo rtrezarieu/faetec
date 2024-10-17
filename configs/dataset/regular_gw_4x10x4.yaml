@@ -1,0 +1,14 @@
+name: structures
+oc20: false
+train:
+  normalize_labels: true
+  src: data/regular_gw_4x10x4/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 7811.45849609375
+  target_std_N: 77.73509216308594
+  target_std_disp: 0.11888382583856583
+val:
+  val:
+    src: data/regular_gw_4x10x4/val/val.lmdb
