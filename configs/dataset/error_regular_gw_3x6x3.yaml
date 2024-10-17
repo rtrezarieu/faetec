@@ -2,7 +2,7 @@ name: structures
 oc20: false
 train:
   normalize_labels: true
-  src: data/regular_random_gw/train/train.lmdb
+  src: data/regular_gw_3x6x3/train/train.lmdb
   target_mean_M: 0
   target_mean_N: 0
   target_mean_disp: 0
@@ -11,4 +11,4 @@ train:
   target_std_disp: 0.03276753053069115
 val:
   val:
-    src: data/regular_random_gw/val/val.lmdb
+    src: data/regular_gw_3x6x3/val/val.lmdb
