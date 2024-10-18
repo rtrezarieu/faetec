@@ -1,0 +1,14 @@
+name: regular_random_3x7x3_2000
+oc20: false
+train:
+  normalize_labels: true
+  src: data/regular_random_3x7x3_2000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 14.818903923034668
+  target_std_N: 5.940027236938477
+  target_std_disp: 0.004195837769657373
+val:
+  val:
+    src: data/regular_random_3x7x3_2000/val/val.lmdb
