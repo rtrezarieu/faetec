@@ -1,8 +1,8 @@
+import os
 from comet_ml import Experiment
 import torch
 import wandb
 from tqdm import tqdm
-import numpy as np
 from copy import deepcopy
 import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -105,13 +105,16 @@ class Trainer():
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
     
     def load_val_loaders(self):
-        self.val_loaders = []
-        for split in self.config['dataset']['val']:
-            transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
-            val_dataset = BaseDataset(self.config['dataset']['val'][split], transform=transform)
-            val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
-            self.val_loaders.append(val_loader)
-    
+        transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
+        val_dataset = BaseDataset(self.config['dataset']['val']['val'], transform=transform)
+        self.val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
+
+    def save_model(self):
+        model_save_path = self.config["dataset"].get("save_model_path", "models/saved_model.pth")
+        if not os.path.exists(os.path.dirname(model_save_path)):
+            os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+        torch.save(self.model.state_dict(), model_save_path)
+        print(f"Model saved at {model_save_path}")
 
     def faenet_call(self, batch):
         equivariance = self.config.get("equivariance", "")
@@ -263,6 +266,8 @@ class Trainer():
                 total_mse_N += mse_loss_N
                 total_mae_M += mae_loss_M
                 total_mse_M += mse_loss_M
+
+                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)   #### introduce gradient clipping if exploding gradients? 
                 self.optimizer.step()
 
                 metrics = {
@@ -319,135 +324,142 @@ class Trainer():
                     self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))  
                     pass
 
-            if epoch != epochs-1:
-                self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
-
-        self.validate(epoch)
+            # if epoch != epochs-1:
+            #     self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
+            self.validate(epoch)
+        
+        # self.validate(epoch)
         # invariance_metrics = self.measure_model_invariance(self.model)
+        self.save_model()
         
         
     def validate(self, epoch, splits=None):
         self.model.eval()
         mae = torch.nn.L1Loss()
         mse = torch.nn.MSELoss()
-        
+
         with torch.no_grad():
-            for i, val_loader in enumerate(self.val_loaders):
-                if splits and i not in splits:
-                    continue
-                split = list(self.config['dataset']['val'].keys())[i]
-                pbar = tqdm(val_loader)
-                mae_loss_disp, mse_loss_disp = 0, 0
-                mae_loss_N, mse_loss_N = 0, 0
-                mae_loss_M, mse_loss_M = 0, 0
-                total_accuracy_loss_disp, total_accuracy_loss_N, total_accuracy_loss_M = 0, 0, 0
-                total_relerror_loss_disp, total_relerror_loss_N, total_relerror_loss_M = 0, 0, 0
+            val_loader = self.val_loader
 
-                for batch_idx, (batch) in enumerate(pbar):
-                    batch = batch[0].to(self.device)
-                    output = self.faenet_call(batch)
-                    target = batch.y
+            # for i, val_loader in enumerate(self.val_loader):
+            #     print(val_loader)
+            #     print(len(val_loader))
 
-                    if self.normalizer:
-                        output_unnormed = self.normalizer.denorm({
-                            'disp': output["disp"].reshape(-1, 3),
-                            'N': output["N"].reshape(-1, 18),
-                            'M': output["M"].reshape(-1, 18)
-                        })
-                    else:
-                        output_unnormed = {
-                            'disp': output["disp"].reshape(-1, 3),
-                            'N': output["N"].reshape(-1, 18),
-                            'M': output["M"].reshape(-1, 18)
-                        }
-                        
-                    target_unnormed = {
-                        'disp': target[:, 0:3],
-                        'N': target[:, 3:21],
-                        'M': target[:, 21:39]
+            # for i, val_loader in enumerate(self.val_loaders):
+            # if splits and i not in splits:
+            #     continue
+            # split = list(self.config['dataset']['val'].keys())[i]
+            pbar = tqdm(val_loader)
+            mae_loss_disp, mse_loss_disp = 0, 0
+            mae_loss_N, mse_loss_N = 0, 0
+            mae_loss_M, mse_loss_M = 0, 0
+            accuracy_loss_disp, accuracy_loss_N, accuracy_loss_M = 0, 0, 0
+            relerror_loss_disp, relerror_loss_N, relerror_loss_M = 0, 0, 0
+
+            for batch_idx, (batch) in enumerate(pbar):
+                batch = batch[0].to(self.device)
+                output = self.faenet_call(batch)
+                target = batch.y
+
+                if self.normalizer:
+                    output_unnormed = self.normalizer.denorm({
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
+                    })
+                else:
+                    output_unnormed = {
+                        'disp': output["disp"].reshape(-1, 3),
+                        'N': output["N"].reshape(-1, 18),
+                        'M': output["M"].reshape(-1, 18)
                     }
-
-                    mae_loss_disp_batch = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()  
-                    mse_loss_disp_batch = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
-
-                    mae_loss_N_batch = mae(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
-                    mse_loss_N_batch = mse(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
-
-                    mae_loss_M_batch = mae(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
-                    mse_loss_M_batch = mse(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
-
-                    mae_loss_disp += mae_loss_disp_batch
-                    mse_loss_disp += mse_loss_disp_batch
-
-                    mae_loss_N += mae_loss_N_batch
-                    mse_loss_N += mse_loss_N_batch
-
-                    mae_loss_M += mae_loss_M_batch
-                    mse_loss_M += mse_loss_M_batch
-
-                    accuracy_loss_disp, relerror_loss_disp, num_disp = node_accuracy_error(output_unnormed["disp"].to(self.device), target_unnormed["disp"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_disp'])
-                    accuracy_loss_N, relerror_loss_N, num_N = node_accuracy_error(output_unnormed["N"].to(self.device), target_unnormed["N"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_N'])
-                    accuracy_loss_M, relerror_loss_M, num_M = node_accuracy_error(output_unnormed["M"].to(self.device), target_unnormed["M"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_M'])
                     
-                    total_accuracy_loss_disp += accuracy_loss_disp / num_disp
-                    total_accuracy_loss_N += accuracy_loss_N / num_N
-                    total_accuracy_loss_M += accuracy_loss_M / num_M
-                    
-                    total_relerror_loss_disp += relerror_loss_disp / num_disp
-                    total_relerror_loss_N += relerror_loss_N / num_N
-                    total_relerror_loss_M += relerror_loss_M / num_M
+                target_unnormed = {
+                    'disp': target[:, 0:3],
+                    'N': target[:, 3:21],
+                    'M': target[:, 21:39]
+                }
 
-                    pbar.set_description(
-                        f'Val {i} - Epoch {epoch+1} - '
-                        f'MAE Disp: {mae_loss_disp.item()/(batch_idx+1):.6f}, '
-                        f'N: {mae_loss_N.item()/(batch_idx+1):.6f}, M: {mae_loss_M.item()/(batch_idx+1):.6f}, '
-                        f'Acc Disp: {total_accuracy_loss_disp.item() / (batch_idx+1):.6f}, '
-                        f'Acc N: {total_accuracy_loss_N.item() / (batch_idx+1):.6f}, '
-                        f'Acc M: {total_accuracy_loss_M.item() / (batch_idx+1):.6f}, '
-                        f'Rel Disp: {total_relerror_loss_disp.item() / (batch_idx+1):.6f}, '
-                        f'Rel N: {total_relerror_loss_N.item() / (batch_idx+1):.6f}, '
-                        f'Rel M: {total_relerror_loss_M.item() / (batch_idx+1):.6f}'
-                    )
+                mae_loss_disp_batch = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()  
+                mse_loss_disp_batch = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
 
-                # Calculate average losses over the entire validation set - len(val_loader) is the number of batches
-                total_mae_disp = mae_loss_disp.item() / len(val_loader)
-                total_mse_disp = mse_loss_disp.item() / len(val_loader)
+                mae_loss_N_batch = mae(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
+                mse_loss_N_batch = mse(output_unnormed["N"].to(self.device), target_unnormed["N"]).detach()
 
-                total_mae_N = mae_loss_N.item() / len(val_loader)
-                total_mse_N = mse_loss_N.item() / len(val_loader)
+                mae_loss_M_batch = mae(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
+                mse_loss_M_batch = mse(output_unnormed["M"].to(self.device), target_unnormed["M"]).detach()
 
-                total_mae_M = mae_loss_M.item() / len(val_loader)
-                total_mse_M = mse_loss_M.item() / len(val_loader)
+                mae_loss_disp += mae_loss_disp_batch
+                mse_loss_disp += mse_loss_disp_batch
 
-                total_accuracy_loss_disp = total_accuracy_loss_disp / len(val_loader)
-                total_accuracy_loss_N = total_accuracy_loss_N / len(val_loader)
-                total_accuracy_loss_M = total_accuracy_loss_M / len(val_loader)
+                mae_loss_N += mae_loss_N_batch
+                mse_loss_N += mse_loss_N_batch
 
-                total_relerror_loss_disp = total_relerror_loss_disp / len(val_loader)
-                total_relerror_loss_N = total_relerror_loss_N / len(val_loader)
-                total_relerror_loss_M = total_relerror_loss_M / len(val_loader)
+                mae_loss_M += mae_loss_M_batch
+                mse_loss_M += mse_loss_M_batch
 
-                if not self.debug:
-                    metrics = {
-                        f"{split}/mae_disp": total_mae_disp,
-                        f"{split}/mse_disp": total_mse_disp,
-                        f"{split}/mae_N": total_mae_N,
-                        f"{split}/mse_N": total_mse_N,
-                        f"{split}/mae_M": total_mae_M,
-                        f"{split}/mse_M": total_mse_M,
-                        f"{split}/accuracy_loss_disp": total_accuracy_loss_disp,
-                        f"{split}/accuracy_loss_N": total_accuracy_loss_N,
-                        f"{split}/accuracy_loss_M": total_accuracy_loss_M,
-                        f"{split}/relerror_loss_disp": total_relerror_loss_disp,
-                        f"{split}/relerror_loss_N": total_relerror_loss_N,
-                        f"{split}/relerror_loss_M": total_relerror_loss_M,
-                    }
-                    if self.config['logger'] == 'wandb':
-                        self.writer.log(metrics)
-                    elif self.config['logger'] == 'comet':
-                        self.writer.log_metrics(metrics)
+                accuracy_loss_disp_batch, relerror_loss_disp_batch, num_disp = node_accuracy_error(output_unnormed["disp"].to(self.device), target_unnormed["disp"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_disp'])
+                accuracy_loss_N_batch, relerror_loss_N_batch, num_N = node_accuracy_error(output_unnormed["N"].to(self.device), target_unnormed["N"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_N'])
+                accuracy_loss_M_batch, relerror_loss_M_batch, num_M = node_accuracy_error(output_unnormed["M"].to(self.device), target_unnormed["M"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_M'])
+                
+                accuracy_loss_disp += accuracy_loss_disp_batch / num_disp
+                accuracy_loss_N += accuracy_loss_N_batch / num_N
+                accuracy_loss_M += accuracy_loss_M_batch / num_M
+                
+                relerror_loss_disp += relerror_loss_disp_batch / num_disp
+                relerror_loss_N += relerror_loss_N_batch / num_N
+                relerror_loss_M += relerror_loss_M_batch / num_M
 
+                pbar.set_description(
+                    f'Val - Epoch {epoch+1} - '
+                    f'MAE Disp: {mae_loss_disp.item()/(batch_idx+1):.6f}, '
+                    f'N: {mae_loss_N.item()/(batch_idx+1):.6f}, M: {mae_loss_M.item()/(batch_idx+1):.6f}, '
+                    f'Acc Disp: {accuracy_loss_disp.item() / (batch_idx+1):.6f}, '
+                    f'Acc N: {accuracy_loss_N.item() / (batch_idx+1):.6f}, '
+                    f'Acc M: {accuracy_loss_M.item() / (batch_idx+1):.6f}, '
+                    f'Rel Disp: {relerror_loss_disp.item() / (batch_idx+1):.6f}, '
+                    f'Rel N: {relerror_loss_N.item() / (batch_idx+1):.6f}, '
+                    f'Rel M: {relerror_loss_M.item() / (batch_idx+1):.6f}'
+                )
 
+            # Calculate average losses over the entire validation set - len(val_loader) is the number of batches
+            total_mae_disp = mae_loss_disp.item() / len(val_loader)
+            total_mse_disp = mse_loss_disp.item() / len(val_loader)
+
+            total_mae_N = mae_loss_N.item() / len(val_loader)
+            total_mse_N = mse_loss_N.item() / len(val_loader)
+
+            total_mae_M = mae_loss_M.item() / len(val_loader)
+            total_mse_M = mse_loss_M.item() / len(val_loader)
+
+            total_accuracy_loss_disp = accuracy_loss_disp / len(val_loader)
+            total_accuracy_loss_N = accuracy_loss_N / len(val_loader)
+            total_accuracy_loss_M = accuracy_loss_M / len(val_loader)
+
+            total_relerror_loss_disp = relerror_loss_disp / len(val_loader)
+            total_relerror_loss_N = relerror_loss_N / len(val_loader)
+            total_relerror_loss_M = relerror_loss_M / len(val_loader)
+
+            if not self.debug:
+                metrics = {
+                    f"mae_disp": total_mae_disp,
+                    f"mse_disp": total_mse_disp,
+                    f"mae_N": total_mae_N,
+                    f"mse_N": total_mse_N,
+                    f"mae_M": total_mae_M,
+                    f"mse_M": total_mse_M,
+                    f"accuracy_loss_disp": total_accuracy_loss_disp,
+                    f"accuracy_loss_N": total_accuracy_loss_N,
+                    f"accuracy_loss_M": total_accuracy_loss_M,
+                    f"relerror_loss_disp": total_relerror_loss_disp,
+                    f"relerror_loss_N": total_relerror_loss_N,
+                    f"relerror_loss_M": total_relerror_loss_M,
+                }
+                if self.config['logger'] == 'wandb':
+                    self.writer.log(metrics)
+                elif self.config['logger'] == 'comet':
+                    self.writer.log_metrics(metrics)
+        
     def measure_model_invariance(self, model):
         model.eval()
         metrics = {}
@@ -495,9 +507,9 @@ class Trainer():
 
             pbar.set_description(f'Measuring invariance - Split {split} - Batch {j} - Energy Delta Rotated 2D: {energy_delta_rotated_2d/n_batches:.6f} - Energy Delta Reflected: {energy_delta_reflected/n_batches:.6f} - Energy Delta Rotated 3D: {energy_delta_rotated_3d/n_batches:.6f}')
 
-        metrics[f"{split}/energy_delta_rotated_2d"] = energy_delta_rotated_2d / n_batches
-        metrics[f"{split}/energy_delta_reflected"] =  energy_delta_reflected / n_batches
-        metrics[f"{split}/energy_delta_rotated_3d"] =  energy_delta_rotated_3d / n_batches
+        metrics[f"energy_delta_rotated_2d"] = energy_delta_rotated_2d / n_batches
+        metrics[f"energy_delta_reflected"] =  energy_delta_reflected / n_batches
+        metrics[f"energy_delta_rotated_3d"] =  energy_delta_rotated_3d / n_batches
         if not self.debug:
             if self.config['logger'] == 'wandb':
                 self.writer.log(metrics)
