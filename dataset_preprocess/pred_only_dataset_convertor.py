@@ -48,11 +48,13 @@ def main(dataset_name):
 
             pos = x[:, 3:6]
             forces = x[:, 9:12]
+            supports = torch.logical_or(torch.logical_or(x[:, 6], x[:, 7]), x[:, 8])
             beam_col = edge_attr[:, 0:2]
 
             processed_data = {
                 'pos': pos,
                 'forces': forces,
+                'supports': supports,
                 'beam_col': beam_col,
                 'edge_index': edge_index,
                 'y': y,

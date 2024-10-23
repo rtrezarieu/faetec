@@ -115,6 +115,8 @@ class FAENet(nn.Module):
         # z = data.atomic_numbers.long()
         pos = data.pos
         f = data.forces
+        a = data.supports.float()
+        a = a.unsqueeze(1)
         batch = data.batch  # the batch attribute should be created by the DataLoader
         energy_skip_co = []
 
@@ -139,7 +141,7 @@ class FAENet(nn.Module):
             edge_attr = edge_attr[edge_mask]
             rel_pos = rel_pos[edge_mask]
 
-        h, e = self.embed_block(f, f_norm, rel_pos, edge_length) ### au lieu de z, dat.tags edge_weight au lieu de edge_attr
+        h, e = self.embed_block(f, f_norm, a, rel_pos, edge_length) ### au lieu de z, dat.tags edge_weight au lieu de edge_attr
 
 
         # Now change the predictions from energy only, to B, M, N // modify the output block
@@ -191,7 +193,9 @@ class EmbeddingBlock(nn.Module):
         self.lin_e12 = nn.Linear(num_gaussians, num_filters - (num_filters // 2))  # d_ij, +2 for Beam/Column One-Hot vectors
 
         self.lin_h1 = nn.Linear(3, hidden_channels // 2)  # r_ij on the schema
-        self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2)) # num_gaussians because the data went through RBF already
+        self.lin_h12 = nn.Linear(num_gaussians, hidden_channels - (hidden_channels // 2) - 4) # num_gaussians because the data went through RBF already
+
+        self.lin_A = nn.Linear(1, 4)  # A_i   ######## définir 4 comme une dimension d'embeddigns des supports
 
         if self.second_layer_MLP:
             self.lin_e2 = nn.Linear(num_filters, num_filters)
@@ -210,6 +214,8 @@ class EmbeddingBlock(nn.Module):
         self.lin_h1.bias.data.fill_(0)
         nn.init.xavier_uniform_(self.lin_h12.weight)
         self.lin_h12.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.lin_A.weight)
+        self.lin_A.bias.data.fill_(0)
         if self.second_layer_MLP:
             # nn.init.xavier_uniform_(self.lin_2.weight)
             # self.lin_2.bias.data.fill_(0)
@@ -218,7 +224,7 @@ class EmbeddingBlock(nn.Module):
             nn.init.xavier_uniform_(self.lin_h2.weight)
             self.lin_h2.bias.data.fill_(0)
 
-    def forward(self, f, f_norm, rel_pos, edge_attr, tag=None):
+    def forward(self, f, f_norm, a, rel_pos, edge_attr, tag=None):
         # Edge embedding
         rel_pos = self.lin_e1(rel_pos)  # r_ij
         edge_attr = self.lin_e12(edge_attr)  # d_ij    
@@ -227,7 +233,8 @@ class EmbeddingBlock(nn.Module):
 
         f = self.lin_h1(f) # f_i
         f_norm = self.lin_h12(f_norm)  # ||f_i||
-        h = torch.cat((f, f_norm), dim=1)
+        A = self.lin_A(a)
+        h = torch.cat((f, f_norm, A), dim=1)    ################
         h = self.act(h)
         
         if self.second_layer_MLP:
