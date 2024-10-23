@@ -248,8 +248,8 @@ class Trainer():
                 loss_disp = self.criterion(output["disp"].reshape(-1, 3).to(self.device), target_normed["disp"].reshape(-1, 3))
                 loss_N = self.criterion(output["N"].reshape(-1, 18).to(self.device), target_normed["N"].reshape(-1, 18))
                 loss_M = self.criterion(output["M"].reshape(-1, 18).to(self.device), target_normed["M"].reshape(-1, 18))
-                # loss = loss_disp
-                loss = loss_disp + loss_N + loss_M
+                loss = loss_disp
+                # loss = loss_disp + loss_N + loss_M
                 loss.backward()
 
                 mae_loss_disp = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()

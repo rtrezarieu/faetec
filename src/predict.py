@@ -1,3 +1,4 @@
+import os
 from comet_ml import Experiment
 import torch
 from tqdm import tqdm
@@ -91,6 +92,12 @@ class Predictor():
             print("No inconsistencies found in the prediction dataset.")
         self.pred_loader = torch.utils.data.DataLoader(pred_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
 
+    def save_predictions(self, stored_predictions):
+        preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions.pt")
+        if not os.path.exists(os.path.dirname(preds_save_path)):
+            os.makedirs(os.path.dirname(preds_save_path), exist_ok=True)
+        torch.save(stored_predictions, preds_save_path)
+        print(f"Predictions saved at {preds_save_path}")
 
     def faenet_call(self, batch):
         equivariance = self.config.get("equivariance", "")
@@ -157,6 +164,8 @@ class Predictor():
         mse = torch.nn.MSELoss()
         run_time = 0
 
+        stored_predictions = {'disp': [], 'N': [], 'M': []}
+
         with torch.no_grad():
             pred_loader = self.pred_loader
             pbar = tqdm(pred_loader)
@@ -199,6 +208,10 @@ class Predictor():
                     'M': target[:, 21:39]
                 }
 
+                stored_predictions['disp'].append(output_unnormed['disp'].cpu())
+                stored_predictions['N'].append(output_unnormed['N'].cpu())
+                stored_predictions['M'].append(output_unnormed['M'].cpu())
+
                 mae_loss_disp_batch = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()  
                 mse_loss_disp_batch = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
 
@@ -240,6 +253,12 @@ class Predictor():
                     f'Rel N: {relerror_loss_N.item() / (batch_idx+1):.6f}, '
                     f'Rel M: {relerror_loss_M.item() / (batch_idx+1):.6f}'
                 )
+
+            stored_predictions['disp'] = torch.cat(stored_predictions['disp'], dim=0)
+            stored_predictions['N'] = torch.cat(stored_predictions['N'], dim=0)
+            stored_predictions['M'] = torch.cat(stored_predictions['M'], dim=0)
+
+            self.save_predictions(stored_predictions)
 
             # Calculate average losses over the entire validation set - len(val_loader) is the number of batches
             total_mae_disp = mae_loss_disp.item() / len(pred_loader)

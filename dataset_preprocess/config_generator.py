@@ -48,7 +48,7 @@ def main(dataset_name):
     # Configuration dictionary
     config = {
         'name': f'{dataset_name}',
-        'save_model_path': f'models/{dataset_name}.pth',
+        'save_model_path': f'models/{dataset_name}/model_{dataset_name}.pth',
         'train': {
             'src': f'data/{dataset_name}/train/train.lmdb',
             'normalize_labels': True,

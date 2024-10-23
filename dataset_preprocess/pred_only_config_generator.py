@@ -49,7 +49,8 @@ def main(dataset_name):
     config = {
         'name': f'{dataset_name}',
         'mode': 'predict',
-        'pretrained_model_path': f'models/{dataset_name}.pth',   # default value to be replaced
+        'pretrained_model_path': f'models/{dataset_name}/model_{dataset_name}.pth',   # default value to be replaced
+        'save_preds_path': f'models/{dataset_name}/{dataset_name}.pt',
         'pred': {
             'src': f'data/{dataset_name}/pred/pred.lmdb',
             'normalize_labels': True,
