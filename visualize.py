@@ -79,10 +79,14 @@ def main(config: DictConfig):
         y_target_list = [x + disp_scaling * y for x, y in zip(y_list, sample_data.y[:, 1].tolist())]
         z_target_list = [x + disp_scaling * y for x, y in zip(z_list, sample_data.y[:, 2].tolist())]
 
-        x_pred_list = [x + disp_scaling * y for x, y in zip(x_list, prediction[:, 0].tolist())]
-        y_pred_list = [x + disp_scaling * y for x, y in zip(y_list, prediction[:, 1].tolist())]
-        z_pred_list = [x + disp_scaling * y for x, y in zip(z_list, prediction[:, 2].tolist())]
-        
+        if prediction is not None:
+            x_pred_list = [x + disp_scaling * y for x, y in zip(x_list, prediction[:, 0].tolist())]
+            y_pred_list = [x + disp_scaling * y for x, y in zip(y_list, prediction[:, 1].tolist())]
+            z_pred_list = [x + disp_scaling * y for x, y in zip(z_list, prediction[:, 2].tolist())]
+        else:
+            x_pred_list = None
+            y_pred_list = None
+            z_pred_list = None
         # visualize_graph_as_3D_structure(sample_data, x_list, y_list, z_list, color='k')
         # visualize_graph_as_3D_structure(sample_data, x_target_list, y_target_list, z_target_list, color='r')
         

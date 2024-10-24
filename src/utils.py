@@ -87,14 +87,15 @@ class GraphVisualizer:
                     self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='r')
 
         vis3 = to_networkx(self.data)
-        pos_3d3 = {node: (x, -z, y) for node, x, y, z in zip(vis3.nodes(), self.x_pred_list, self.y_pred_list, self.z_pred_list)}
-        if self.toggle3_visible:
-            self.sc3 = self.ax.scatter(*zip(*pos_3d3.values()), s=120, c='g', depthshade=True)
-            for node in vis3.nodes():
-                for neighbor in vis3.neighbors(node):
-                    x1, y1, z1 = pos_3d3[node]
-                    x2, y2, z2 = pos_3d3[neighbor]
-                    self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='g')       
+        if self.x_pred_list is not None:
+            pos_3d3 = {node: (x, -z, y) for node, x, y, z in zip(vis3.nodes(), self.x_pred_list, self.y_pred_list, self.z_pred_list)}
+            if self.toggle3_visible:
+                self.sc3 = self.ax.scatter(*zip(*pos_3d3.values()), s=120, c='g', depthshade=True)
+                for node in vis3.nodes():
+                    for neighbor in vis3.neighbors(node):
+                        x1, y1, z1 = pos_3d3[node]
+                        x2, y2, z2 = pos_3d3[neighbor]
+                        self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='g')       
 
         self.ax.set_title('3D Visualization of Graph')
         # self.ax.set_box_aspect([1, 1, 1])  # Equal aspect ratio

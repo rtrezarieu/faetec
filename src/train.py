@@ -442,18 +442,18 @@ class Trainer():
 
             if not self.debug:
                 metrics = {
-                    f"mae_disp": total_mae_disp,
-                    f"mse_disp": total_mse_disp,
-                    f"mae_N": total_mae_N,
-                    f"mse_N": total_mse_N,
-                    f"mae_M": total_mae_M,
-                    f"mse_M": total_mse_M,
-                    f"accuracy_loss_disp": total_accuracy_loss_disp,
-                    f"accuracy_loss_N": total_accuracy_loss_N,
-                    f"accuracy_loss_M": total_accuracy_loss_M,
-                    f"relerror_loss_disp": total_relerror_loss_disp,
-                    f"relerror_loss_N": total_relerror_loss_N,
-                    f"relerror_loss_M": total_relerror_loss_M,
+                    f"val/mae_disp": total_mae_disp,
+                    f"val/mse_disp": total_mse_disp,
+                    f"val/mae_N": total_mae_N,
+                    f"val/mse_N": total_mse_N,
+                    f"val/mae_M": total_mae_M,
+                    f"val/mse_M": total_mse_M,
+                    f"val/accuracy_loss_disp": total_accuracy_loss_disp,
+                    f"val/accuracy_loss_N": total_accuracy_loss_N,
+                    f"val/accuracy_loss_M": total_accuracy_loss_M,
+                    f"val/relerror_loss_disp": total_relerror_loss_disp,
+                    f"val/relerror_loss_N": total_relerror_loss_N,
+                    f"val/relerror_loss_M": total_relerror_loss_M,
                 }
                 if self.config['logger'] == 'wandb':
                     self.writer.log(metrics)

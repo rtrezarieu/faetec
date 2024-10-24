@@ -1,0 +1,15 @@
+name: blocks_random_7x7x7_1000
+oc20: false
+save_model_path: models/blocks_random_7x7x7_1000/model_blocks_random_7x7x7_1000.pth
+train:
+  normalize_labels: true
+  src: data/blocks_random_7x7x7_1000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 24.660049438476562
+  target_std_N: 15.744851112365723
+  target_std_disp: 0.010809388011693954
+val:
+  val:
+    src: data/blocks_random_7x7x7_1000/val/val.lmdb
