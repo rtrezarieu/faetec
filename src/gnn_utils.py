@@ -35,3 +35,7 @@ def node_accuracy_error(output, target, accuracy_threshold, disp=True):
 def swish(x):
     """Swish activation function"""
     return torch.nn.functional.silu(x)
+
+def relu(x):
+    """ReLU activation function"""
+    return torch.nn.functional.relu(x)

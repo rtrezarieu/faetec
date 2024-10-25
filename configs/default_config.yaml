@@ -5,19 +5,19 @@ project: faetec
 debug: False  # log or not
 
 equivariance: "" # "" or "data_augmentation" or "frame_averaging"  ################################################### OFF for now // réactiver faenet plus tard
-fa_type: "stochastic" # "" or "stochastic" or "full"
+fa_type: "" # "" or "stochastic" or "full"
 
 optimizer:
-    batch_size: 16 # number of structures per batch
-    eval_batch_size: 8
+    batch_size: 32 # number of structures per batch  // batch size trop petite? entre 16 et 64 voir 128 max
+    eval_batch_size: 16  # toujours une division par 2
     epochs: 15
     scheduler: CosineAnnealingLR
-    optimizer: AdamW
-    lr_initial: 0.002
+    optimizer: AdamW # SGD, Adam, AdamW
+    lr_initial: 0.002  #0.00005 #0.002   # de 0.01 à 0.00001par pas de puissance 10
 
 defaults:
     - _self_
-    - dataset : box_unique_random_horizontal_3x3x3_1000 # <-- Default dataset; it can be overridden
+    - dataset : box_unique_random_contour_3x2x3_1000 # <-- Default dataset; it can be overridden
     - model : faenet
   
 # Hydra config, do not change.
@@ -25,3 +25,28 @@ hydra:
   output_subdir: null
   run:
     dir: .
+
+# hydra:
+#     sweep:
+#         dir: ./sweep_results
+#     search:
+#         - name: optimizer.batch_size
+#           values: [16, 32, 64, 128]
+#         - name: optimizer.lr_initial
+#           values: [0.01, 0.002, 0.0005, 0.0001]
+#         - name: optimizer
+#           values: ["Adam", "SGD", "AdamW"]
+#         - name: model.act
+#           values: ["relu", "swish"]
+#         - name: model.hidden_channels
+#           values: [64, 256, 384, 512]
+#         - name: model.num_filters
+#           values: [64, 256, 384, 512]
+#         - name: model.num_interactions
+#           values: [2, 4, 6, 8]
+#         - name: model.second_layer_MLP
+#           values: [true, false]
+#         - name: model.complex_mp
+#           values: [true, false]
+#         - name: model.force_decoder_type
+#           values: ["simple", "mlp", "res", "res_updown"]

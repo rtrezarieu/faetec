@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.norm import GraphNorm
 
-from .gnn_utils import dropout_edge, swish
+from .gnn_utils import dropout_edge, swish, relu
 from src.force_decoder import ForceDecoder
 
 class FAENet(nn.Module):

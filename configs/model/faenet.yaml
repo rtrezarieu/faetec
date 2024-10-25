@@ -1,5 +1,5 @@
 name: faenet
-act: swish
+act: relu #swish
 loss: mse #mae
 hidden_channels: 384 #384
 num_filters: 480 # 480
@@ -24,7 +24,7 @@ force_decoder_model_config:
     hidden_channels: 384   ## 256 ou 384?
     norm: batch1d # batch1d, layer or null
   res:
-    hidden_channels: 600 # 384  ## 128 ou 384?
+    hidden_channels: 384 # 384  ## 128 ou 384?
     norm: batch1d # batch1d, layer or null
   res_updown:
     hidden_channels: 384 ## 128 ou 384?
