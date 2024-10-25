@@ -7,9 +7,9 @@ train:
   target_mean_M: 0
   target_mean_N: 0
   target_mean_disp: 0
-  target_std_M: 13.695772171020508
-  target_std_N: 11.213689804077148
-  target_std_disp: 0.003125277580693364
+  target_std_M: 11.001846313476562
+  target_std_N: 7.5825934410095215
+  target_std_disp: 0.0013725858880206943
 val:
   val:
     src: data/box_unique_random_3x3x3_1000/val/val.lmdb

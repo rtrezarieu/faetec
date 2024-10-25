@@ -4,7 +4,7 @@ logger: comet
 project: faetec
 debug: False  # log or not
 
-equivariance: "frame_averaging" # "" or "data_augmentation" or "frame_averaging"
+equivariance: "" # "" or "data_augmentation" or "frame_averaging"  ################################################### OFF for now // réactiver faenet plus tard
 fa_type: "stochastic" # "" or "stochastic" or "full"
 
 optimizer:
@@ -17,7 +17,7 @@ optimizer:
 
 defaults:
     - _self_
-    - dataset : blocks_unique_random_3x3x3_1000 # <-- Default dataset; it can be overridden
+    - dataset : box_unique_random_3x3x3_1000 # <-- Default dataset; it can be overridden
     - model : faenet
   
 # Hydra config, do not change.

@@ -3,7 +3,7 @@ act: swish
 loss: mse #mae
 hidden_channels: 384 #384
 num_filters: 480 # 480
-num_interactions: 7
+num_interactions: 4
 num_gaussians: 1 # 104
 dropout_edge: 0.0
 cutoff: 6.0

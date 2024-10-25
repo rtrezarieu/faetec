@@ -11,21 +11,26 @@ def dropout_edge(edge_index, p=0.5, training=False):
     edge_index = edge_index[:, mask]
     return edge_index
 
-def node_accuracy_error(output, target, accuracy_threshold=0.1):
+def node_accuracy_error(output, target, accuracy_threshold, disp=True):
     """
     Calculate relative accuracy between output and target using a threshold.
     Returns the sum of the relative accuracies and the number of elements used.
     """
     device = output.device
+    # condition = torch.any(torch.abs(target) > accuracy_threshold, dim=1)
     condition = torch.abs(target) > accuracy_threshold
+
 
     ones = torch.ones(target.shape).to(device)[condition]
     zeros = torch.zeros(target.shape).to(device)[condition]
-    relative_accuracy = torch.max(ones - torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition])), zeros)
+    relative_accuracy = torch.clamp(ones - torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition])), min=0, max=1)
+    # relative_accuracy = torch.max(ones - torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition])), zeros)
     relative_error = torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition]))
 
     # return relative_accuracy.sum(), torch.numel(relative_accuracy)
-    return relative_accuracy.sum(), relative_error.sum(), torch.numel(relative_accuracy)
+    # condition.sum() = number of lines = nodes
+    # relative_accuracy.numel() = number of attributes = 3 per nodes for displacement
+    return relative_accuracy.sum(), relative_error.sum(), condition.sum() # relative_accuracy.numel()  #condition.sum()  #, torch.numel(relative_accuracy)
 
 def swish(x):
     """Swish activation function"""
