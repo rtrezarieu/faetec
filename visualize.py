@@ -75,6 +75,12 @@ def main(config: DictConfig):
         y_list = sample_data.pos[:, 1].tolist()  # reversed for matplotlib xyz convention vs xzy for pythagore
         z_list = sample_data.pos[:, 2].tolist()
 
+        x_forces_list = sample_data.forces[:, 0].tolist()
+        y_forces_list = sample_data.forces[:, 1].tolist()
+        z_forces_list = sample_data.forces[:, 2].tolist()
+
+        supports_list = sample_data.supports.tolist()
+
         x_target_list = [x + disp_scaling * y for x, y in zip(x_list, sample_data.y[:, 0].tolist())]
         y_target_list = [x + disp_scaling * y for x, y in zip(y_list, sample_data.y[:, 1].tolist())]
         z_target_list = [x + disp_scaling * y for x, y in zip(z_list, sample_data.y[:, 2].tolist())]
@@ -91,7 +97,7 @@ def main(config: DictConfig):
         # visualize_graph_as_3D_structure(sample_data, x_target_list, y_target_list, z_target_list, color='r')
         
         visualize_graphs(sample_data, x_list, y_list, z_list, x_target_list, y_target_list, z_target_list, 
-                         x_pred_list, y_pred_list, z_pred_list, show_vectors=True)
+                         x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list)   #show_vectors=True
         ### change colors
         ### change nodes color
         ### print predictions

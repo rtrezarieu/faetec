@@ -17,7 +17,7 @@ optimizer:
 
 defaults:
     - _self_
-    - dataset : box_unique_random_3x3x3_1000 # <-- Default dataset; it can be overridden
+    - dataset : box_unique_random_horizontal_3x3x3_1000 # <-- Default dataset; it can be overridden
     - model : faenet
   
 # Hydra config, do not change.
