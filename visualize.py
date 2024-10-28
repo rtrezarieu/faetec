@@ -8,7 +8,6 @@ from src.datasets.base_dataset import BaseDataset
 from src.utils import visualize_graph_as_3D_structure, visualize_graphs
 from src.train import transformations_list
 
-
 class SimpleDatasetLoader:
     def __init__(self, config):
         self.config = config
@@ -38,17 +37,21 @@ class SimpleDatasetLoader:
         single_sample = torch.utils.data.Subset(self.dataset, [index])
         return DataLoader(single_sample, batch_size=1, shuffle=False)  # torch.utils.data.
     
-    def load_predictions(self):
+    def load_predictions(self, epoch=14):
         """Loads saved predictions from disk."""
         preds_save_path = self.config["dataset"].get("save_preds_path", "predictions/saved_predictions.pth")
         if os.path.exists(preds_save_path):
+            if preds_save_path.endswith('.pt'): # for predict.py
+                predictions = torch.load(preds_save_path)
+                print(f"Predictions loaded from {preds_save_path}")
+            else: # for train.py
+                preds_save_path = os.path.join(preds_save_path, f"epoch_{epoch}.pt")
             predictions = torch.load(preds_save_path)
-            print(f"Predictions loaded from {preds_save_path}")
             return predictions
         else:
             print(f"No saved predictions found at {preds_save_path}")
             return None
-
+     
     def get_sample_predictions(self, index=0):
         """Fetch predictions for a specific sample."""
         if self.predictions is None:
@@ -57,17 +60,20 @@ class SimpleDatasetLoader:
 
         if index >= len(self.predictions):
             raise IndexError("Sample index out of range.")
-
+        
         return self.predictions['disp']
 
 
 @hydra.main(config_path="configs", config_name="default_config.yaml", version_base="1.1")
 def main(config: DictConfig):
+    # For sweeper multirun
+    original_cwd = hydra.utils.get_original_cwd()
+    os.chdir(original_cwd)
+
     disp_scaling = 100
     dataset_loader = SimpleDatasetLoader(config)
     single_sample_loader = dataset_loader.get_single_sample_loader(index=0) ###### index is only useful if we want to check one structure from a train, without predictions
     prediction = dataset_loader.get_sample_predictions()
-
 
     # (only one sample here)
     for sample_data in single_sample_loader:
@@ -100,8 +106,6 @@ def main(config: DictConfig):
                          x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list)   #show_vectors=True
         ### change colors
         ### change nodes color
-        ### print predictions
-        ### compare target and predictions
         ### option to print the vector only
 
 if __name__ == "__main__":

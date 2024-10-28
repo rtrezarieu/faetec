@@ -167,4 +167,6 @@ data_to_convert/
 tests/
 .vscode/
 multirun/
+outputs/
+models/
 # optuna/
