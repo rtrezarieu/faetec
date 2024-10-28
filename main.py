@@ -10,6 +10,10 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1000" # Depends on VR
 
 @hydra.main(config_path="configs", config_name="default_config.yaml", version_base="1.1")
 def main(config: DictConfig):
+    # For sweeper multirun
+    original_cwd = hydra.utils.get_original_cwd()
+    os.chdir(original_cwd)
+
     print("Configuration used:")
     print(OmegaConf.to_yaml(config))
 
@@ -25,11 +29,11 @@ def main(config: DictConfig):
     if mode == "train":
         config_dict = OmegaConf.to_container(config, resolve=True)
         trainer = Trainer(config_dict, debug=config.get("debug", False), device=device)
-        trainer.train()
+        return trainer.train()
     elif mode == "predict":
         config_dict = OmegaConf.to_container(config, resolve=True)
         predictor = Predictor(config_dict, debug=config.get("debug", False), device=device)
         predictor.validate()
-
+    
 if __name__ == "__main__":
     main()

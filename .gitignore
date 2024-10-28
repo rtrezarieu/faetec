@@ -166,3 +166,4 @@ data/
 data_to_convert/
 tests/
 .vscode/
+multirun/

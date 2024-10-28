@@ -16,37 +16,43 @@ optimizer:
     lr_initial: 0.002  #0.00005 #0.002   # de 0.01 à 0.00001par pas de puissance 10
 
 defaults:
-    - _self_
-    - dataset : box_unique_random_contour_3x2x3_1000 # <-- Default dataset; it can be overridden
-    - model : faenet
-  
-# Hydra config, do not change.
-hydra:
-  output_subdir: null
-  run:
-    dir: .
+  - _self_
+  - dataset : box_unique_random_contour_3x4x3_1000 # <-- Default dataset; it can be overridden
+  - model : faenet
+  - override hydra/sweeper: optuna
+  - override hydra/sweeper/sampler: tpe
 
+# # Hydra config, do not change.
 # hydra:
-#     sweep:
-#         dir: ./sweep_results
-#     search:
-#         - name: optimizer.batch_size
-#           values: [16, 32, 64, 128]
-#         - name: optimizer.lr_initial
-#           values: [0.01, 0.002, 0.0005, 0.0001]
-#         - name: optimizer
-#           values: ["Adam", "SGD", "AdamW"]
-#         - name: model.act
-#           values: ["relu", "swish"]
-#         - name: model.hidden_channels
-#           values: [64, 256, 384, 512]
-#         - name: model.num_filters
-#           values: [64, 256, 384, 512]
-#         - name: model.num_interactions
-#           values: [2, 4, 6, 8]
-#         - name: model.second_layer_MLP
-#           values: [true, false]
-#         - name: model.complex_mp
-#           values: [true, false]
-#         - name: model.force_decoder_type
-#           values: ["simple", "mlp", "res", "res_updown"]
+#   output_subdir: null
+#   run:
+#     dir: .
+
+
+hydra:
+  # output_subdir: null
+  # run:
+  #   dir: .
+  # sweep:
+  #   dir: .
+  sweeper:
+    sampler:
+      seed: 123
+    direction: minimize
+    study_name: trial sweep
+    storage: null
+    n_trials: 20
+    n_jobs: 1
+    # max_failure_rate: 0.0
+    params:
+      # x: range(-5.5, 5.5, step=0.5)
+      # y: choice(-5 ,0 ,5)
+      optimizer.batch_size: choice(16, 32, 64, 128)
+      optimizer.lr_initial: choice(0.01, 0.002, 0.0005, 0.0001)
+      optimizer.optimizer: choice("Adam", "SGD", "AdamW")
+      model.act: choice("relu", "swish")
+      model.hidden_channels: choice(64, 256, 384, 512)
+      model.num_filters: choice(64, 256, 384, 512)
+      model.num_interactions: choice(2, 4, 6, 8)
+      model.second_layer_MLP: choice(true, false)
+      model.complex_mp: choice(true, false)
