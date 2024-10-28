@@ -9,7 +9,7 @@ fa_type: "" # "" or "stochastic" or "full"
 
 optimizer:
     batch_size: 32 # number of structures per batch  // batch size trop petite? entre 16 et 64 voir 128 max
-    eval_batch_size: 16  # toujours une division par 2
+    eval_batch_size: 16
     epochs: 15
     scheduler: CosineAnnealingLR
     optimizer: AdamW # SGD, Adam, AdamW
@@ -39,16 +39,19 @@ hydra:
     sampler:
       seed: 123
     direction: minimize
-    study_name: trial sweep
-    storage: null
-    n_trials: 20
+    study_name: minimize MAE disp
+    storage: sqlite:///sweep_to_be_renamed.db
+    # storage: null
+    n_trials: 100
     n_jobs: 1
     # max_failure_rate: 0.0
     params:
       # x: range(-5.5, 5.5, step=0.5)
       # y: choice(-5 ,0 ,5)
       optimizer.batch_size: choice(16, 32, 64, 128)
-      optimizer.lr_initial: choice(0.01, 0.002, 0.0005, 0.0001)
+      optimizer.eval_batch_size: choice(8, 16, 32, 64)
+      # optimizer.lr_initial: choice(0.01, 0.002, 0.0005, 0.0001)
+      optimizer.lr_initial: interval(0.0001, 0.01)
       optimizer.optimizer: choice("Adam", "SGD", "AdamW")
       model.act: choice("relu", "swish")
       model.hidden_channels: choice(64, 256, 384, 512)

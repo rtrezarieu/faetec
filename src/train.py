@@ -183,7 +183,7 @@ class Trainer():
         mse = torch.nn.MSELoss()
 
         run_time, n_batches = 0, 0
-        min_val_loss = 0
+        self.min_val_loss = float('inf')
         for epoch in range(epochs):
             self.model.train()
             pbar = tqdm(self.train_loader)
@@ -327,15 +327,16 @@ class Trainer():
 
             # if epoch != epochs-1:
             #     self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
-            min_val_loss = self.validate(epoch, min_val_loss)
+            self.validate(epoch)
+            # print(f'min_val_loss: {self.min_val_loss}')
         
         # self.validate(epoch)
         # invariance_metrics = self.measure_model_invariance(self.model)
         self.save_model()
 
-        return min_val_loss
+        return self.min_val_loss
         
-    def validate(self, epoch, min_val_loss, splits=None):
+    def validate(self, epoch, splits=None):
         self.model.eval()
         mae = torch.nn.L1Loss()
         mse = torch.nn.MSELoss()
@@ -444,8 +445,8 @@ class Trainer():
             total_relerror_loss_N = relerror_loss_N / len(val_loader)
             total_relerror_loss_M = relerror_loss_M / len(val_loader)
 
-            if total_mae_disp < min_val_loss:
-                min_val_loss = total_mae_disp
+            if total_mae_disp < self.min_val_loss:
+                self.min_val_loss = total_mae_disp
 
             if not self.debug:
                 metrics = {
@@ -466,8 +467,6 @@ class Trainer():
                     self.writer.log(metrics)
                 elif self.config['logger'] == 'comet':
                     self.writer.log_metrics(metrics)
-                             
-        return min_val_loss
         
     def measure_model_invariance(self, model):
         model.eval()
