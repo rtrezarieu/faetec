@@ -13,10 +13,10 @@ def main(dataset_name):
 
     # dataset_name = 'regular_random_3x7x3_20000'
     data_dir = f'data_to_convert/{dataset_name}'
-    pred_dir = f'data/{dataset_name}/pred'
-    pred_lmdb_path = f'{pred_dir}/pred.mdb'
+    train_dir = f'data/{dataset_name}/train'
+    train_lmdb_path = f'{train_dir}/train.mdb'
 
-    os.makedirs(pred_dir, exist_ok=True)
+    os.makedirs(train_dir, exist_ok=True)
 
     map_size = 2 * 1024 * 1024 * 1024  # 2 GB
 
@@ -26,12 +26,12 @@ def main(dataset_name):
                 for filename in files if filename.endswith('.pt')]
 
     random.shuffle(all_files)
-    pred_files = set(all_files)
+    train_files = set(all_files)
     print(f"Total files: {len(all_files)}")
 
     # Initialize LMDB environment
-    pred_env = lmdb.open(pred_lmdb_path, map_size=map_size)
-    pred_txn = pred_env.begin(write=True)
+    train_env = lmdb.open(train_lmdb_path, map_size=map_size)
+    train_txn = train_env.begin(write=True)
 
     pred_counter = 0
 
@@ -60,22 +60,22 @@ def main(dataset_name):
                 'y': y,
             }
 
-            if file_path in pred_files:
+            if file_path in train_files:
                 key = f"{pred_counter}".encode("ascii")
-                pred_txn.put(key, pickle.dumps(processed_data))
+                train_txn.put(key, pickle.dumps(processed_data))
                 pred_counter += 1
 
             pbar.update(1)
 
-    pred_txn.commit()
-    pred_env.close()
+    train_txn.commit()
+    train_env.close()
 
     # Add a small delay to ensure the environment is fully released
     time.sleep(2)
 
     # Rename data.mdb to pred.lmdb and move it up one directory
-    shutil.move(os.path.join(pred_lmdb_path, 'data.mdb'), os.path.join(pred_dir, 'pred.lmdb'))
-    shutil.rmtree(pred_lmdb_path)
+    shutil.move(os.path.join(train_lmdb_path, 'data.mdb'), os.path.join(train_dir, 'train.lmdb'))
+    shutil.rmtree(train_lmdb_path)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

@@ -35,9 +35,11 @@ class Trainer():
         self.load_logger()
         self.load_optimizer()
         self.load_train_loader()
-        self.load_val_loaders()
-        self.load_scheduler()
-        self.load_criterion()
+        mode = self.config["dataset"].get("mode", "train")
+        if mode == "train":
+            self.load_val_loaders()
+            self.load_scheduler()
+            self.load_criterion()
     
     def load_logger(self):
         if not self.debug:
@@ -52,8 +54,15 @@ class Trainer():
                 self.writer = self.experiment
     
     def load_model(self):
-        self.model = FAENet(**self.config["model"]).to(self.device)
-    
+        model_path = self.config["dataset"].get("pretrained_model_path", None)
+        if model_path:
+            print(f"Loading model from {model_path}")
+            self.model = FAENet(**self.config["model"]).to(self.device)
+            print(f"Loading state_dict {model_path}")
+            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        else:
+            self.model = FAENet(**self.config["model"]).to(self.device)
+        
     def load_optimizer(self):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config['optimizer'].get('lr_initial', 1e-4))
     
@@ -97,7 +106,10 @@ class Trainer():
             print(f"Inconsistent data found at indices: {inconsistent_indices}")
         else:
             print("No inconsistencies found in the training dataset.")
-        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
+        if self.config["dataset"].get("mode", "train") == "train":
+            self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
+        else:
+            self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config["optimizer"]['eval_batch_size'], shuffle=False, num_workers=0, collate_fn=self.parallel_collater)
     
     def load_val_loaders(self):
         transform = self.transform if self.config.get('equivariance', '') != "data_augmentation" else None
@@ -112,8 +124,11 @@ class Trainer():
         print(f"Model saved at {model_save_path}")
 
     def save_predictions(self, stored_predictions, epoch):
-        preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions/")
-        preds_save_path = os.path.join(preds_save_path, f"epoch_{epoch}.pt")
+        if self.config["dataset"].get("mode", "train") == "train":
+            preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions/")
+            preds_save_path = os.path.join(preds_save_path, f"epoch_{epoch}.pt")
+        else:
+            preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions.pt")
         if not os.path.exists(os.path.dirname(preds_save_path)):
             os.makedirs(os.path.dirname(preds_save_path), exist_ok=True)
         torch.save(stored_predictions, preds_save_path)
@@ -324,23 +339,18 @@ class Trainer():
 
         return self.min_val_loss
         
-    def validate(self, epoch, splits=None):
+    def validate(self, epoch=0, splits=None):
         self.model.eval()
         mae = torch.nn.L1Loss()
         mse = torch.nn.MSELoss()
         stored_predictions = {'disp': [], 'N': [], 'M': []}
+        run_time = 0.0
 
         with torch.no_grad():
-            val_loader = self.val_loader
-
-            # for i, val_loader in enumerate(self.val_loader):
-            #     print(val_loader)
-            #     print(len(val_loader))
-
-            # for i, val_loader in enumerate(self.val_loaders):
-            # if splits and i not in splits:
-            #     continue
-            # split = list(self.config['dataset']['val'].keys())[i]
+            if self.config["dataset"].get("mode", "train") == "train":
+                val_loader = self.val_loader
+            else:
+                val_loader = self.train_loader
             pbar = tqdm(val_loader)
             mae_loss_disp, mse_loss_disp = 0, 0
             mae_loss_N, mse_loss_N = 0, 0
@@ -350,7 +360,18 @@ class Trainer():
 
             for batch_idx, (batch) in enumerate(pbar):
                 batch = batch[0].to(self.device)
-                output = self.faenet_call(batch)
+                if self.config["dataset"].get("mode", "train") == "train": 
+                    output = self.faenet_call(batch)
+                else:
+                    start_time = torch.cuda.Event(enable_timing=True)
+                    end_time = torch.cuda.Event(enable_timing=True)
+                    start_time.record()   
+                    output = self.faenet_call(batch)
+                    end_time.record()  
+                    torch.cuda.synchronize()  
+                    current_run_time = start_time.elapsed_time(end_time)  
+                    run_time += current_run_time
+                    print(f"Elapsed time for predictions: {current_run_time} ms")
                 target = batch.y
 
                 if self.normalizer:
@@ -445,8 +466,9 @@ class Trainer():
             total_relerror_loss_N = relerror_loss_N / len(val_loader)
             total_relerror_loss_M = relerror_loss_M / len(val_loader)
 
-            if total_mae_disp < self.min_val_loss:
-                self.min_val_loss = total_mae_disp
+            if self.config["dataset"].get("mode", "train") == "train":
+                if total_mae_disp < self.min_val_loss:
+                    self.min_val_loss = total_mae_disp
 
             if not self.debug:
                 metrics = {
@@ -466,6 +488,7 @@ class Trainer():
                 if self.config['logger'] == 'comet':
                     self.writer.log_metrics(metrics)
         
+
     def measure_model_invariance(self, model):
         model.eval()
         metrics = {}

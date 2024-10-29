@@ -4,7 +4,6 @@ import torch
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from src.train import Trainer
-from src.predict_errors import Predictor
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1000" # Depends on VRAM available
 
@@ -26,14 +25,12 @@ def main(config: DictConfig):
     mode = config["dataset"].get("mode", "train")  # Add 'mode' to your config
     config["run_name"] = f'{config["dataset"].get("name", "structures")}_{config["model"].get("name", "faenet")}_{config.get("experiment_name", "")}'
 
-    if mode == "train":
-        config_dict = OmegaConf.to_container(config, resolve=True)
-        trainer = Trainer(config_dict, debug=config.get("debug", False), device=device)
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    trainer = Trainer(config_dict, debug=config.get("debug", False), device=device)
+    if mode == "train":       
         return trainer.train()
     elif mode == "predict":
-        config_dict = OmegaConf.to_container(config, resolve=True)
-        predictor = Predictor(config_dict, debug=config.get("debug", False), device=device)
-        predictor.validate()
+        trainer.validate()
     
 if __name__ == "__main__":
     main()
