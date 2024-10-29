@@ -1,7 +1,6 @@
 import os
 from comet_ml import Experiment
 import torch
-import wandb
 from tqdm import tqdm
 from copy import deepcopy
 import datetime
@@ -42,11 +41,7 @@ class Trainer():
     
     def load_logger(self):
         if not self.debug:
-            if self.config['logger'] == 'wandb':
-                wandb.init(project=self.config['project'], name=self.run_name)
-                wandb.config.update(self.config)
-                self.writer = wandb
-            elif self.config['logger'] == 'comet':
+            if self.config['logger'] == 'comet':
                 self.experiment = Experiment(
                     api_key="4PNGEKdzZGpTM83l7pBrnYgTo",
                     project_name=self.config['project'],
@@ -293,9 +288,7 @@ class Trainer():
                 }
 
                 if not self.debug:
-                    if self.config['logger'] == 'wandb':
-                        self.writer.log(metrics)
-                    elif self.config['logger'] == 'comet':
+                    if self.config['logger'] == 'comet':
                         self.writer.log_metrics(metrics)
 
                 pbar.set_description(f'Epoch {epoch+1}/{epochs} - Loss: {loss.detach().item():.6f}')
@@ -303,16 +296,7 @@ class Trainer():
                     self.scheduler.step()
 
             if not self.debug:
-                if self.config['logger'] == 'wandb':
-                    self.writer.log({
-                        "train/mae_disp_epoch": total_mae_disp,
-                        "train/mse_disp_epoch": total_mse_disp,
-                        "train/mae_N_epoch": total_mae_N,
-                        "train/mse_N_epoch": total_mse_N,
-                        "train/mae_M_epoch": total_mae_M,
-                        "train/mse_M_epoch": total_mse_M,
-                    })
-                elif self.config['logger'] == 'comet':
+                if self.config['logger'] == 'comet':
                     self.writer.log_metrics({
                         "train/mae_disp_epoch": total_mae_disp,
                         "train/mse_disp_epoch": total_mse_disp,
@@ -326,12 +310,8 @@ class Trainer():
                 torch.cuda.empty_cache()
 
             if not self.debug:
-                if self.config['logger'] == 'wandb':
-                    self.writer.log({"systems_per_second": 1 / (run_time / n_batches)})  
-                    pass
-                elif self.config['logger'] == 'comet':
+                if self.config['logger'] == 'comet':
                     self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))  
-                    pass
 
             # if epoch != epochs-1:
             #     self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
@@ -444,7 +424,8 @@ class Trainer():
             stored_predictions['N'] = torch.cat(stored_predictions['N'], dim=0)
             stored_predictions['M'] = torch.cat(stored_predictions['M'], dim=0)
 
-            self.save_predictions(stored_predictions, epoch)
+            if self.config['save_predictions']:
+                self.save_predictions(stored_predictions, epoch)
 
             # Calculate average losses over the entire validation set - len(val_loader) is the number of batches
             total_mae_disp = mae_loss_disp.item() / len(val_loader)
@@ -482,9 +463,7 @@ class Trainer():
                     f"val/relerror_loss_N": total_relerror_loss_N,
                     f"val/relerror_loss_M": total_relerror_loss_M,
                 }
-                if self.config['logger'] == 'wandb':
-                    self.writer.log(metrics)
-                elif self.config['logger'] == 'comet':
+                if self.config['logger'] == 'comet':
                     self.writer.log_metrics(metrics)
         
     def measure_model_invariance(self, model):
@@ -538,9 +517,7 @@ class Trainer():
         metrics[f"energy_delta_reflected"] =  energy_delta_reflected / n_batches
         metrics[f"energy_delta_rotated_3d"] =  energy_delta_rotated_3d / n_batches
         if not self.debug:
-            if self.config['logger'] == 'wandb':
-                self.writer.log(metrics)
-            elif self.config['logger'] == 'comet':
+            if self.config['logger'] == 'comet':
                 self.writer.log_metrics(metrics)
         pbar.close()
         print("\nInvariance results:")

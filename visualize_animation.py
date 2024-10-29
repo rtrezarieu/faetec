@@ -62,6 +62,7 @@ class SimpleDatasetLoader:
     def create_animation(self, sample_data, x_list, y_list, z_list, x_target_list, y_target_list, z_target_list,
                         x_forces_list, y_forces_list, z_forces_list, supports_list, num_epochs=15):
         fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+        fig.set_size_inches(12, 12)
 
         all_x = x_list + x_target_list
         all_y = y_list + y_target_list

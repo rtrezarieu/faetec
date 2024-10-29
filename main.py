@@ -4,7 +4,7 @@ import torch
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from src.train import Trainer
-from src.predict import Predictor
+from src.predict_errors import Predictor
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1000" # Depends on VRAM available
 
