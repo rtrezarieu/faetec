@@ -63,6 +63,7 @@ def main(dataset_name):
             'target_std_M': std_M.item(),
         },
         'val': {
+            'src': f'data/{dataset_name}/val/val.lmdb',
             'val': {
                 'src': f'data/{dataset_name}/val/val.lmdb',
             }

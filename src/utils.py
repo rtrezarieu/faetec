@@ -89,7 +89,7 @@ class GraphVisualizer:
         self.ax.clear()
         # Plot the first dataset
         vis = to_networkx(self.data)
-        pos_3d1 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_list1, self.y_list1, self.z_list1)}
+        pos_3d1 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_list1, self.y_list1, self.z_list1)}
         if self.toggle1_visible:
             self.sc1 = self.ax.scatter(*zip(*pos_3d1.values()), s=120, c='b', depthshade=True)
             for node in vis.nodes():
@@ -98,7 +98,7 @@ class GraphVisualizer:
                     x2, y2, z2 = pos_3d1[neighbor]
                     self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='b')
 
-        pos_3d2 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_list2, self.y_list2, self.z_list2)}
+        pos_3d2 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_list2, self.y_list2, self.z_list2)}
         if self.toggle2_visible:
             self.sc2 = self.ax.scatter(*zip(*pos_3d2.values()), s=120, c='r', depthshade=True)
             for node in vis.nodes():
@@ -108,7 +108,7 @@ class GraphVisualizer:
                     self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='r')
 
         if self.x_pred_list is not None:
-            pos_3d3 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_pred_list, self.y_pred_list, self.z_pred_list)}
+            pos_3d3 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_pred_list, self.y_pred_list, self.z_pred_list)}
             if self.toggle3_visible:
                 self.sc3 = self.ax.scatter(*zip(*pos_3d3.values()), s=120, c='g', depthshade=True)
                 for node in vis.nodes():
@@ -118,7 +118,7 @@ class GraphVisualizer:
                         self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='g')         
 
         if self.x_forces_list is not None and self.y_forces_list is not None and self.z_forces_list is not None:
-            pos_3d4 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_list1, self.y_list1, self.z_list1)}
+            pos_3d4 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_list1, self.y_list1, self.z_list1)}
             if self.toggle4_visible:
                 self.sc4 = self.ax.scatter(*zip(*pos_3d4.values()), s=120, c='orange', depthshade=True)
 
@@ -139,7 +139,7 @@ class GraphVisualizer:
                     self.ax.quiver(x, y, z, fx, fy, fz, color='orange', length=normalized_length, normalize=False)
 
         if self.supports_list is not None:
-            pos_3d5 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_list1, self.y_list1, self.z_list1)}
+            pos_3d5 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_list1, self.y_list1, self.z_list1)}
             if self.toggle5_visible:
                 support_nodes = [node for node in vis.nodes() if self.supports_list[node]]
                 support_positions = [pos_3d5[node] for node in support_nodes]
@@ -150,7 +150,7 @@ class GraphVisualizer:
                 #     self.ax.text(x, y, z, f'{node}', color='purple')
         
         # transformed base
-        pos_3d6 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_transf_base_list, self.y_transf_base_list, self.z_transf_base_list)}
+        pos_3d6 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_transf_base_list, self.y_transf_base_list, self.z_transf_base_list)}
         if self.toggle6_visible:
             self.sc6 = self.ax.scatter(*zip(*pos_3d6.values()), s=120, c='cyan', depthshade=True)
             for node in vis.nodes():
@@ -161,7 +161,7 @@ class GraphVisualizer:
 
         # transformed predictions
         if self.x_transf_list is not None:
-            pos_3d7 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_transf_list, self.y_transf_list, self.z_transf_list)}
+            pos_3d7 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), self.x_transf_list, self.y_transf_list, self.z_transf_list)}
             if self.toggle7_visible:
                 self.sc7 = self.ax.scatter(*zip(*pos_3d7.values()), s=120, c='lime', depthshade=True)
                 for node in vis.nodes():
@@ -170,11 +170,16 @@ class GraphVisualizer:
                         x2, y2, z2 = pos_3d7[neighbor]
                         self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='lime')  
 
+        self.ax.set_xlabel('X Pythagore', fontsize=14)
+        self.ax.set_ylabel('Y Pythagore', fontsize=14)
+        self.ax.set_zlabel('Z Pythagore', fontsize=14)
         self.ax.set_title('3D Visualization of Graph', fontsize=16)
         self.ax.tick_params(axis='both', which='major', labelsize=12)
+        self.ax.view_init(vertical_axis='y')
         self.ax.axes.set_aspect('equal')
         plt.tight_layout()
         plt.draw()
+        
 
     def add_buttons(self):
         ax_button1 = plt.axes([0.1, 0.01, 0.1, 0.05])
@@ -254,7 +259,7 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
     ax.set_zlim(*z_limits)
 
     vis = to_networkx(sample_data)
-    # pos_3d1 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), x_list, y_list, z_list)}
+    # pos_3d1 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), x_list, y_list, z_list)}
     # sc1 = ax.scatter(*zip(*pos_3d1.values()), s=120, c='b', depthshade=True)
     # for node in vis.nodes():
     #     for neighbor in vis.neighbors(node):
@@ -262,7 +267,7 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
     #         x2, y2, z2 = pos_3d1[neighbor]
     #         ax.plot([x1, x2], [y1, y2], [z1, z2], c='b')
 
-    # pos_3d2 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), x_target_list, y_target_list, z_target_list)}
+    # pos_3d2 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), x_target_list, y_target_list, z_target_list)}
     # sc2 = ax.scatter(*zip(*pos_3d2.values()), s=120, c='r', depthshade=True)
     # for neighbor in vis.neighbors(node):
     #     x1, y1, z1 = pos_3d2[node]
@@ -270,7 +275,7 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
     #     ax.plot([x1, x2], [y1, y2], [z1, z2], c='r')
 
     if x_pred_list is not None and y_pred_list is not None and z_pred_list is not None:
-        pos_3d3 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), x_pred_list, y_pred_list, z_pred_list)}
+        pos_3d3 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), x_pred_list, y_pred_list, z_pred_list)}
         sc3 = ax.scatter(*zip(*pos_3d3.values()), s=120, c='g', depthshade=True)
         for node in vis.nodes():
             for neighbor in vis.neighbors(node):
@@ -285,6 +290,7 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
+    ax.view_init(vertical_axis='y')
 
        
 

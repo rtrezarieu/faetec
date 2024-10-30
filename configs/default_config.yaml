@@ -5,8 +5,8 @@ project: faetec
 debug: False  # log or not
 save_predictions: true # to save predictions during validation or not
 
-equivariance: "" # "" or "data_augmentation" or "frame_averaging"  ################################################### OFF for now // réactiver faenet plus tard
-fa_type: "" # "" or "stochastic" or "full"
+equivariance: "frame_averaging" # "" or "data_augmentation" or "frame_averaging"  ################################################### OFF for now // réactiver faenet plus tard
+fa_type: "full" # "" or "stochastic" or "full"
 
 optimizer:
     batch_size: 16 # 32 # number of structures per batch  // batch size trop petite? entre 16 et 64 voir 128 max

@@ -21,7 +21,7 @@ class SimpleDatasetLoader:
         self.transform = self._get_transform()
         # Assuming BaseDataset is a class that you use for handling your dataset
         if 'train' in self.config['dataset']:
-            self.dataset = BaseDataset(self.config['dataset']['train'], transform=None)  ##################### NONE   self.transform
+            self.dataset = BaseDataset(self.config['dataset']['val'], transform=None)  ##################### NONE   self.transform
         else:
             self.dataset = BaseDataset(self.config['dataset']['pred'], transform=None)  ##################### NONE   self.transform
 
@@ -83,6 +83,7 @@ def main(config: DictConfig):
 
     disp_scaling = 100
     dataset_loader = SimpleDatasetLoader(config)
+    # index of the structure in val to visualize. Works only with index=0 for now, because the index is never specified in prediction (etc.), so zip handles it well and select only the first elements.
     single_sample_loader = dataset_loader.get_single_sample_loader(index=0) ###### index is only useful if we want to check one structure from a train, without predictions
     prediction, transformation, transformed_base = dataset_loader.get_sample_predictions()
 
@@ -121,7 +122,7 @@ def main(config: DictConfig):
             z_transf_base_list = None
 
         if transformation is not None:    
-            print(transformation * disp_scaling) ########################################################################################  VALEURS TRES FAIBLES
+            # print(transformation * disp_scaling) ########################################################################################  VALEURS TRES FAIBLES
             ################################################### problème avec le scaling lors des transformations ? Voir avec Jad
             # print(x_transf_base_list)
             x_transf_list = [x + disp_scaling * y for x, y in zip(x_transf_base_list, transformation[:, 0].tolist())]

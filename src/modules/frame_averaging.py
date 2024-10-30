@@ -32,9 +32,9 @@ class FrameAveraging:
             )
             return data
         
-def frame_averaging(pos, f, fa_method="stochastic", oc20=False): # oc20=True
+def frame_averaging(pos, f, fa_method="stochastic", oc20=False):
     if oc20:
-        used_pos = pos[:, :2]
+        used_pos = pos[:, :2]  ######## à changer pour translater les 3 corrdonées
     else:
         used_pos = pos
 
@@ -54,18 +54,37 @@ def frame_averaging(pos, f, fa_method="stochastic", oc20=False): # oc20=True
 
     signs = list(product([1, -1], repeat=relative_pos.shape[1] + 1))
     basis_projections = [torch.tensor(x) for x in signs] # 16 combinations (or less for 2D)
-    lmbda_f = torch.max(torch.norm(f, dim=-1, keepdim=True))
+    lmbda_f = 1 #################################################################################torch.max(torch.norm(f, dim=-1, keepdim=True))
     fa_poss = []
     fa_cells = []
     fa_fs = []
     all_rots = []
     lmbda_fs = []
 
-    for pm in basis_projections: # pm for plus-minus # pm is one combination of the frame
-        new_eigenvec = pm[:3] * eigenvec # Change the basis of the frame's element
-        new_lmbda_f = lmbda_f * pm[3] # Change the sign of the force
-        fa_pos = relative_pos @ new_eigenvec # Project the positions on the new basis
-        fa_f = f @ new_eigenvec / new_lmbda_f
+    
+    for pm in basis_projections:  # pm for plus-minus # pm is one combination of the frame
+        if oc20:
+            new_eigenvec = pm[:2] * eigenvec  # Change the basis of the frame's element for 2D
+            new_lmbda_f = lmbda_f * pm[2]  ###################################### à vérifier +++++
+            fa_pos = relative_pos @ new_eigenvec  # Project the positions on the new basis
+            # fa_f = f[:, :2] @ new_eigenvec / new_lmbda_f  # Adjust forces for 2D
+            # fa_f = torch.cat((fa_f[:, :2], f[:, 2].unsqueeze(1)), dim=1)
+            fa_f = f[:, :3:2] @ new_eigenvec / new_lmbda_f  # Adjust forces for 2D
+            fa_f = torch.cat((fa_f[:, :1], f[:, 1].unsqueeze(1), fa_f[:, 1:]), dim=1)
+            ########################## rebuild fa_f properly!!!!! with the last coordinates
+        else:
+            new_eigenvec = pm[:3] * eigenvec  # Change the basis of the frame's element for 3D
+            new_lmbda_f = lmbda_f * pm[3]  # Change the sign of the force for 3D
+            fa_pos = relative_pos @ new_eigenvec  # Project the positions on the new basis
+            fa_f = f @ new_eigenvec / new_lmbda_f  # Adjust forces for 3D
+
+    ###############################
+    # for pm in basis_projections: # pm for plus-minus # pm is one combination of the frame
+    #     new_eigenvec = pm[:3] * eigenvec # Change the basis of the frame's element
+    #     new_lmbda_f = lmbda_f * pm[3] # Change the sign of the force
+        # fa_pos = relative_pos @ new_eigenvec # Project the positions on the new basis
+        # fa_f = f @ new_eigenvec / new_lmbda_f
+    ###############################
 
         if new_pos is not None:
             full_eigenvec = torch.eye(3)

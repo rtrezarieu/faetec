@@ -21,7 +21,7 @@ class SimpleDatasetLoader:
     def load_dataset(self):
         """Loads the training dataset and prints some basic information."""
         self.transform = self._get_transform()
-        self.dataset = BaseDataset(self.config['dataset']['train'], transform=None)
+        self.dataset = BaseDataset(self.config['dataset']['val'], transform=None)
         print(f"Loaded dataset with {len(self.dataset)} samples.")
 
     def _get_transform(self):
@@ -62,14 +62,14 @@ class SimpleDatasetLoader:
     def create_animation(self, sample_data, x_list, y_list, z_list, x_target_list, y_target_list, z_target_list,
                         x_forces_list, y_forces_list, z_forces_list, supports_list, num_epochs=15):
         fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
-        fig.set_size_inches(12, 12)
+        fig.set_size_inches(8, 8)
 
         all_x = x_list + x_target_list
         all_y = y_list + y_target_list
         all_z = z_list + z_target_list
         x_limits = (-5 + min(all_x), max(all_x))
-        y_limits = (-max(all_z), -min(all_z) + 5)
-        z_limits = (min(all_y), max(all_y))
+        y_limits = (min(all_y), max(all_y))
+        z_limits = (min(all_z) - 5, max(all_z))
 
         def update_plot(epoch):
             ax.cla()  # Clear the plot to avoid overlaps

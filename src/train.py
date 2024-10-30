@@ -143,7 +143,6 @@ class Trainer():
         equivariance = self.config.get("equivariance", "")
         output_keys = ["disp", "N", "M"]
         outputs = {key: [] for key in output_keys}
-        # disp_all, m_all, n_all = [], [], []
         transformations = {"disp": [], "N": [], "M": []}
 
         if not hasattr(batch, "nnodes"):
@@ -175,7 +174,6 @@ class Trainer():
                     if return_transformations:
                         transformations["disp"].append(output["disp"])
                     output["disp"] = g_disp
-                    # disp_all.append(g_disp)
 
                 if output.get("N") is not None:
                     lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["N"].device)
@@ -183,7 +181,6 @@ class Trainer():
                     if return_transformations:
                         transformations["N"].append(output["N"])
                     output["N"] = g_n
-                    # n_all.append(g_n)
 
                 if output.get("M") is not None:
                     lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["M"].device)
@@ -191,7 +188,6 @@ class Trainer():
                     if return_transformations:
                         transformations["M"].append(output["M"])
                     output["M"] = g_m
-                    # m_all.append(g_m)
 
                 for key in output_keys:
                     outputs[key].append(output[key])
@@ -251,7 +247,6 @@ class Trainer():
                         'N': target[:, 3:21],
                         'M': target[:, 21:39]
                     }
-                    # output_unnormed = self.normalizer.denorm(output["energy"].reshape(-1))
                     output_unnormed = self.normalizer.denorm({
                         'disp': output["disp"].reshape(-1, 3),
                         'N': output["N"].reshape(-1, 18),
@@ -264,21 +259,11 @@ class Trainer():
                         'M': target[:, 21:39]
                     }
                     target_unnormed = target_normed
-                    # output_unnormed = output["energy"].reshape(-1)
                     output_unnormed = {
                         'disp': output["disp"].reshape(-1, 3),
                         'N': output["N"].reshape(-1, 18),
                         'M': output["M"].reshape(-1, 18)
                     }
-
-                # print(output["disp"].shape)
-                # print(f"Batch size: {batch.batch.shape[0]}")
-                # print(f"Num nodes: {batch.nnodes}")
-                # print(f"Sum num nodes: {batch.nnodes.sum()}")
-                # print(batch.pos.shape)
-                # print(batch.forces.shape)
-                # print(target_normed["disp"].shape)
-                # print(batch.y.shape)
 
                 loss_disp = self.criterion(output["disp"].reshape(-1, 3).to(self.device), target_normed["disp"].reshape(-1, 3))
                 loss_N = self.criterion(output["N"].reshape(-1, 18).to(self.device), target_normed["N"].reshape(-1, 18))
@@ -344,12 +329,8 @@ class Trainer():
                 if self.config['logger'] == 'comet':
                     self.writer.log_metric("systems_per_second", 1 / (run_time / n_batches))  
 
-            # if epoch != epochs-1:
-            #     self.validate(epoch, splits=[0]) # Validate on the first split (val_id)
             self.validate(epoch)
-            # print(f'min_val_loss: {self.min_val_loss}')
         
-        # self.validate(epoch)
         # invariance_metrics = self.measure_model_invariance(self.model)
         self.save_model()
 
@@ -382,10 +363,14 @@ class Trainer():
                     if self.config.get("equivariance", "") == "frame_averaging":
                         output, transformation = self.faenet_call(batch, return_transformations=True)
                         base_transformed = batch.fa_pos[0]
+                        if batch_idx == 0:
+                            rotation_matrix = batch.fa_rot[0][0]
+                            print(f"Rotation matrix: {rotation_matrix}")
                     else:
                         output = self.faenet_call(batch)
-                        transformation = output
-                        base_transformed = batch.pos
+                        transformation = output  # No transformation for predictions
+                        base_transformed = batch.pos # No transformation for the base model
+                        target_transformed = batch.y 
                 else:
                     start_time = torch.cuda.Event(enable_timing=True)
                     end_time = torch.cuda.Event(enable_timing=True)
