@@ -13,6 +13,8 @@ class SimpleDatasetLoader:
         self.config = config
         self.load_dataset()
         self.predictions = self.load_predictions()
+        self.transformations = self.load_predictions(transformations=True)
+        self.transformed_base = self.load_predictions(base=True)
 
     def load_dataset(self):
         """Loads the training dataset and prints some basic information."""
@@ -37,9 +39,14 @@ class SimpleDatasetLoader:
         single_sample = torch.utils.data.Subset(self.dataset, [index])
         return DataLoader(single_sample, batch_size=1, shuffle=False)  # torch.utils.data.
     
-    def load_predictions(self, epoch=14):
+    def load_predictions(self, epoch=14, transformations=False, base=False):
         """Loads saved predictions from disk."""
-        preds_save_path = self.config["dataset"].get("save_preds_path", "predictions/saved_predictions.pth")
+        if transformations:
+            preds_save_path = self.config["dataset"].get("save_transformed_preds_path", "transformations/saved_transformations.pth")
+        elif base:
+            preds_save_path = self.config["dataset"].get("save_transformed_base_path", "transformations/saved_base.pth")
+        else:
+            preds_save_path = self.config["dataset"].get("save_preds_path", "predictions/saved_predictions.pth")
         if os.path.exists(preds_save_path):
             if preds_save_path.endswith('.pt'): # for predict.py
                 predictions = torch.load(preds_save_path)
@@ -51,17 +58,21 @@ class SimpleDatasetLoader:
         else:
             print(f"No saved predictions found at {preds_save_path}")
             return None
-     
+    
+
     def get_sample_predictions(self, index=0):
         """Fetch predictions for a specific sample."""
-        if self.predictions is None:
+        preds, transformations, transformed_base = None, None, None
+        if self.predictions:
+            preds = self.predictions['disp']
+        if self.transformations:
+            transformations = self.transformations['disp']
+        if self.transformed_base:
+            transformed_base = self.transformed_base['base']
+        else:
             print("No predictions available. Please generate or load predictions.")
             return None
-
-        if index >= len(self.predictions):
-            raise IndexError("Sample index out of range.")
-        
-        return self.predictions['disp']
+        return preds, transformations, transformed_base
 
 
 @hydra.main(config_path="configs", config_name="default_config.yaml", version_base="1.1")
@@ -73,7 +84,7 @@ def main(config: DictConfig):
     disp_scaling = 100
     dataset_loader = SimpleDatasetLoader(config)
     single_sample_loader = dataset_loader.get_single_sample_loader(index=0) ###### index is only useful if we want to check one structure from a train, without predictions
-    prediction = dataset_loader.get_sample_predictions()
+    prediction, transformation, transformed_base = dataset_loader.get_sample_predictions()
 
     # (only one sample here)
     for sample_data in single_sample_loader:
@@ -99,11 +110,35 @@ def main(config: DictConfig):
             x_pred_list = None
             y_pred_list = None
             z_pred_list = None
+        
+        if transformed_base is not None:
+            x_transf_base_list = [x for x in transformed_base[:, 0].tolist()]
+            y_transf_base_list = [x for x in transformed_base[:, 1].tolist()]
+            z_transf_base_list = [x for x in transformed_base[:, 2].tolist()]
+        else:
+            x_transf_base_list = None
+            y_transf_base_list = None
+            z_transf_base_list = None
+
+        if transformation is not None:    
+            print(transformation * disp_scaling) ########################################################################################  VALEURS TRES FAIBLES
+            ################################################### problème avec le scaling lors des transformations ? Voir avec Jad
+            # print(x_transf_base_list)
+            x_transf_list = [x + disp_scaling * y for x, y in zip(x_transf_base_list, transformation[:, 0].tolist())]
+            y_transf_list = [x + disp_scaling * y for x, y in zip(y_transf_base_list, transformation[:, 1].tolist())]
+            z_transf_list = [x + disp_scaling * y for x, y in zip(z_transf_base_list, transformation[:, 2].tolist())]
+        else:
+            x_transf_list = None
+            y_transf_list = None
+            z_transf_list = None
         # visualize_graph_as_3D_structure(sample_data, x_list, y_list, z_list, color='k')
         # visualize_graph_as_3D_structure(sample_data, x_target_list, y_target_list, z_target_list, color='r')
         
-        visualize_graphs(sample_data, x_list, y_list, z_list, x_target_list, y_target_list, z_target_list, 
-                         x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list)   #show_vectors=True
+        visualize_graphs(
+                        sample_data, x_list, y_list, z_list, x_target_list, y_target_list, z_target_list, 
+                        x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list,
+                        x_transf_list, y_transf_list, z_transf_list, x_transf_base_list, y_transf_base_list, z_transf_base_list
+                        )   #show_vectors=True
         ### change colors
         ### change nodes color
         ### option to print the vector only

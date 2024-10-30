@@ -2,6 +2,8 @@ name: box_unique_random_contour_3x4x3_1000
 oc20: false
 save_model_path: models/box_unique_random_contour_3x4x3_1000/model_box_unique_random_contour_3x4x3_1000.pth
 save_preds_path: models/box_unique_random_contour_3x4x3_1000/val/
+save_transformed_preds_path: models/box_unique_random_contour_3x4x3_1000/val/transformed_predictions/
+save_transformed_base_path: models/box_unique_random_contour_3x4x3_1000/val/transformed_base/
 train:
   normalize_labels: true
   src: data/box_unique_random_contour_3x4x3_1000/train/train.lmdb

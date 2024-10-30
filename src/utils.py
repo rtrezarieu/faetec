@@ -38,7 +38,10 @@ def visualize_graph_as_3D_structure(data, x_list, y_list, z_list, color):
     plt.show()
 
 class GraphVisualizer:
-    def __init__(self, data, x_list1, y_list1, z_list1, x_list2, y_list2, z_list2, x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list):
+    def __init__(self, data, x_list1, y_list1, z_list1, x_list2, y_list2, z_list2, x_pred_list, y_pred_list, z_pred_list, 
+                 x_forces_list, y_forces_list, z_forces_list, supports_list,
+                 x_transf_list, y_transf_list, z_transf_list, x_transf_base_list, y_transf_base_list, z_transf_base_list
+                 ):
         self.data = data
         self.x_list1 = x_list1
         self.y_list1 = y_list1
@@ -53,6 +56,12 @@ class GraphVisualizer:
         self.y_forces_list = y_forces_list
         self.z_forces_list = z_forces_list
         self.supports_list = supports_list
+        self.x_transf_list = x_transf_list
+        self.y_transf_list = y_transf_list
+        self.z_transf_list = z_transf_list
+        self.x_transf_base_list = x_transf_base_list
+        self.y_transf_base_list = y_transf_base_list
+        self.z_transf_base_list = z_transf_base_list
         
         self.fig = plt.figure(figsize=(10, 8))
         self.ax = self.fig.add_subplot(111, projection='3d')
@@ -61,12 +70,17 @@ class GraphVisualizer:
         self.sc2 = None
         self.sc3 = None
         self.sc4 = None
+        self.sc5 = None
+        self.sc6 = None
+        self.sc7 = None
 
         self.toggle1_visible = True
         self.toggle2_visible = False
         self.toggle3_visible = False
         self.toggle4_visible = False
         self.toggle5_visible = False
+        self.toggle6_visible = False
+        self.toggle7_visible = False
 
         self.draw_plots()
         self.add_buttons()
@@ -134,6 +148,27 @@ class GraphVisualizer:
                 # for node in support_nodes:
                 #     x, y, z = pos_3d5[node]
                 #     self.ax.text(x, y, z, f'{node}', color='purple')
+        
+        # transformed base
+        pos_3d6 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_transf_base_list, self.y_transf_base_list, self.z_transf_base_list)}
+        if self.toggle6_visible:
+            self.sc6 = self.ax.scatter(*zip(*pos_3d6.values()), s=120, c='cyan', depthshade=True)
+            for node in vis.nodes():
+                for neighbor in vis.neighbors(node):
+                    x1, y1, z1 = pos_3d6[node]
+                    x2, y2, z2 = pos_3d6[neighbor]
+                    self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='cyan')
+
+        # transformed predictions
+        if self.x_transf_list is not None:
+            pos_3d7 = {node: (x, -z, y) for node, x, y, z in zip(vis.nodes(), self.x_transf_list, self.y_transf_list, self.z_transf_list)}
+            if self.toggle7_visible:
+                self.sc7 = self.ax.scatter(*zip(*pos_3d7.values()), s=120, c='lime', depthshade=True)
+                for node in vis.nodes():
+                    for neighbor in vis.neighbors(node):
+                        x1, y1, z1 = pos_3d7[node]
+                        x2, y2, z2 = pos_3d7[neighbor]
+                        self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='lime')  
 
         self.ax.set_title('3D Visualization of Graph', fontsize=16)
         self.ax.tick_params(axis='both', which='major', labelsize=12)
@@ -160,7 +195,15 @@ class GraphVisualizer:
 
         ax_button5 = plt.axes([0.58, 0.01, 0.1, 0.05])
         self.button5 = Button(ax_button5, 'Supports')
-        self.button5.on_clicked(self.toggle_data5)       
+        self.button5.on_clicked(self.toggle_data5)
+
+        ax_button6 = plt.axes([0.7, 0.01, 0.1, 0.05])
+        self.button6 = Button(ax_button6, 'Transformed Base')
+        self.button6.on_clicked(self.toggle_data6)
+
+        ax_button7 = plt.axes([0.82, 0.01, 0.1, 0.05])
+        self.button7 = Button(ax_button7, 'Transformed Prediction')
+        self.button7.on_clicked(self.toggle_data7)       
 
     def toggle_data1(self, event):
         self.toggle1_visible = not self.toggle1_visible
@@ -182,8 +225,22 @@ class GraphVisualizer:
         self.toggle5_visible = not self.toggle5_visible
         self.draw_plots()
 
-def visualize_graphs(sample_data1, x_list1, y_list1, z_list1, x_list2, y_list2, z_list2, x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list):
-    visualizer = GraphVisualizer(sample_data1, x_list1, y_list1, z_list1, x_list2, y_list2, z_list2, x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list)
+    def toggle_data6(self, event):
+        self.toggle6_visible = not self.toggle6_visible
+        self.draw_plots()
+    
+    def toggle_data7(self, event):
+        self.toggle7_visible = not self.toggle7_visible
+        self.draw_plots()
+
+def visualize_graphs(sample_data1, x_list1, y_list1, z_list1, x_list2, y_list2, z_list2, x_pred_list, y_pred_list, z_pred_list, 
+                     x_forces_list, y_forces_list, z_forces_list, supports_list,
+                     x_transf_list, y_transf_list, z_transf_list, x_transf_base_list, y_transf_base_list, z_transf_base_list
+                     ):
+    visualizer = GraphVisualizer(sample_data1, x_list1, y_list1, z_list1, x_list2, y_list2, z_list2, x_pred_list, y_pred_list, z_pred_list, 
+                                 x_forces_list, y_forces_list, z_forces_list, supports_list,
+                                 x_transf_list, y_transf_list, z_transf_list, x_transf_base_list, y_transf_base_list, z_transf_base_list
+                                 )
     plt.show(block=True)
 
 

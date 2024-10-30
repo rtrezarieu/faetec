@@ -49,7 +49,9 @@ def main(dataset_name):
     config = {
         'name': f'{dataset_name}',
         'save_model_path': f'models/{dataset_name}/model_{dataset_name}.pth',
-        'save_preds_path': f'models/{dataset_name}/val/{dataset_name}.pt',
+        'save_preds_path': f'models/{dataset_name}/val/',
+        'save_transformed_preds_path': f'models/{dataset_name}/val/transformed_predictions/',
+        'save_transformed_base_path': f'models/{dataset_name}/val/transformed_base/',
         'train': {
             'src': f'data/{dataset_name}/train/train.lmdb',
             'normalize_labels': True,

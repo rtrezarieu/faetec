@@ -123,9 +123,14 @@ class Trainer():
         torch.save(self.model.state_dict(), model_save_path)
         print(f"Model saved at {model_save_path}")
 
-    def save_predictions(self, stored_predictions, epoch):
+    def save_predictions(self, stored_predictions, epoch, transformations=False, base=False):
         if self.config["dataset"].get("mode", "train") == "train":
-            preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions/")
+            if transformations:
+                preds_save_path = self.config["dataset"].get("save_transformed_preds_path", "models/saved_transformed_predictions/")
+            elif base:
+                preds_save_path = self.config["dataset"].get("save_transformed_base_path", "models/saved_transformed_base/")
+            else:
+                preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions/")
             preds_save_path = os.path.join(preds_save_path, f"epoch_{epoch}.pt")
         else:
             preds_save_path = self.config["dataset"].get("save_preds_path", "models/saved_predictions.pt")
@@ -134,11 +139,12 @@ class Trainer():
         torch.save(stored_predictions, preds_save_path)
         print(f"Predictions saved at {preds_save_path}")
 
-    def faenet_call(self, batch):
+    def faenet_call(self, batch, return_transformations=False):
         equivariance = self.config.get("equivariance", "")
         output_keys = ["disp", "N", "M"]
         outputs = {key: [] for key in output_keys}
         # disp_all, m_all, n_all = [], [], []
+        transformations = {"disp": [], "N": [], "M": []}
 
         if not hasattr(batch, "nnodes"):
             batch.nnodes = torch.unique(batch.batch, return_counts=True)[1]
@@ -166,18 +172,24 @@ class Trainer():
                         .bmm(fa_rot.transpose(1, 2).to(output["disp"].device))
                     )
                     g_disp = (lmbda_f.view(-1, 1, 1) * g_disp).view(-1, 3)
+                    if return_transformations:
+                        transformations["disp"].append(output["disp"])
                     output["disp"] = g_disp
                     # disp_all.append(g_disp)
 
                 if output.get("N") is not None:
                     lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["N"].device)
                     g_n = (output["N"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    if return_transformations:
+                        transformations["N"].append(output["N"])
                     output["N"] = g_n
                     # n_all.append(g_n)
 
                 if output.get("M") is not None:
                     lmbda_f = torch.repeat_interleave(batch.lmbda_f[i], batch.nnodes, dim=0).to(output["M"].device)
                     g_m = (output["M"].view(-1, 1, 18) * lmbda_f.view(-1, 1, 1)).view(-1, 18)
+                    if return_transformations:
+                        transformations["M"].append(output["M"])
                     output["M"] = g_m
                     # m_all.append(g_m)
 
@@ -189,7 +201,11 @@ class Trainer():
 
         # Average predictions over frames
         output = {key: torch.stack(outputs[key], dim=0).mean(dim=0) for key in output_keys}
-
+        
+        if return_transformations:
+            if equivariance == "frame_averaging":
+                transformation = {key: torch.stack(transformations[key], dim=0).mean(dim=0) for key in output_keys}
+                return output, transformation
         return output
 
 
@@ -344,6 +360,8 @@ class Trainer():
         mae = torch.nn.L1Loss()
         mse = torch.nn.MSELoss()
         stored_predictions = {'disp': [], 'N': [], 'M': []}
+        stored_transformations = {'disp': [], 'N': [], 'M': []}
+        stored_base_transformed = {'base': []}
         run_time = 0.0
 
         with torch.no_grad():
@@ -361,7 +379,13 @@ class Trainer():
             for batch_idx, (batch) in enumerate(pbar):
                 batch = batch[0].to(self.device)
                 if self.config["dataset"].get("mode", "train") == "train": 
-                    output = self.faenet_call(batch)
+                    if self.config.get("equivariance", "") == "frame_averaging":
+                        output, transformation = self.faenet_call(batch, return_transformations=True)
+                        base_transformed = batch.fa_pos[0]
+                    else:
+                        output = self.faenet_call(batch)
+                        transformation = output
+                        base_transformed = batch.pos
                 else:
                     start_time = torch.cuda.Event(enable_timing=True)
                     end_time = torch.cuda.Event(enable_timing=True)
@@ -380,11 +404,21 @@ class Trainer():
                         'N': output["N"].reshape(-1, 18),
                         'M': output["M"].reshape(-1, 18)
                     })
+                    transformation_unnormed = self.normalizer.denorm({
+                        'disp': transformation["disp"].reshape(-1, 3),
+                        'N': transformation["N"].reshape(-1, 18),
+                        'M': transformation["M"].reshape(-1, 18)
+                    })
                 else:
                     output_unnormed = {
                         'disp': output["disp"].reshape(-1, 3),
                         'N': output["N"].reshape(-1, 18),
                         'M': output["M"].reshape(-1, 18)
+                    }
+                    transformation_unnormed = {
+                        'disp': transformation["disp"].reshape(-1, 3),
+                        'N': transformation["N"].reshape(-1, 18),
+                        'M': transformation["M"].reshape(-1, 18)
                     }
                     
                 target_unnormed = {
@@ -396,6 +430,12 @@ class Trainer():
                 stored_predictions['disp'].append(output_unnormed['disp'].cpu())
                 stored_predictions['N'].append(output_unnormed['N'].cpu())
                 stored_predictions['M'].append(output_unnormed['M'].cpu())
+
+                stored_transformations['disp'].append(transformation_unnormed['disp'].cpu())
+                stored_transformations['N'].append(transformation_unnormed['N'].cpu())
+                stored_transformations['M'].append(transformation_unnormed['M'].cpu())
+
+                stored_base_transformed['base'].append(base_transformed[:, 0:3].cpu())
 
                 mae_loss_disp_batch = mae(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()  
                 mse_loss_disp_batch = mse(output_unnormed["disp"].to(self.device), target_unnormed["disp"]).detach()
@@ -445,8 +485,16 @@ class Trainer():
             stored_predictions['N'] = torch.cat(stored_predictions['N'], dim=0)
             stored_predictions['M'] = torch.cat(stored_predictions['M'], dim=0)
 
+            stored_transformations['disp'] = torch.cat(stored_transformations['disp'], dim=0)
+            stored_transformations['N'] = torch.cat(stored_transformations['N'], dim=0)
+            stored_transformations['M'] = torch.cat(stored_transformations['M'], dim=0)
+
+            stored_base_transformed['base'] = torch.cat(stored_base_transformed['base'], dim=0)
+
             if self.config['save_predictions']:
                 self.save_predictions(stored_predictions, epoch)
+                self.save_predictions(stored_transformations, epoch, transformations=True)
+                self.save_predictions(stored_base_transformed, epoch, base=True)
 
             # Calculate average losses over the entire validation set - len(val_loader) is the number of batches
             total_mae_disp = mae_loss_disp.item() / len(val_loader)

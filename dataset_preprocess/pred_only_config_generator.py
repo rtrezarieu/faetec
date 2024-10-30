@@ -51,6 +51,8 @@ def main(dataset_name):
         'mode': 'predict',
         'pretrained_model_path': f'models/{dataset_name}/model_{dataset_name}.pth',   # default value to be replaced
         'save_preds_path': f'models/{dataset_name}/{dataset_name}.pt',
+        'save_transformed_preds_path': f'models/{dataset_name}/{dataset_name}_transformed.pt',
+        'save_transformed_base_path': f'models/{dataset_name}/{dataset_name}_base_transformed.pt',
         'train': {
             'src': f'data/{dataset_name}/train/train.lmdb',
             'normalize_labels': True,
