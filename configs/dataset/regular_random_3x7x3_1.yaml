@@ -1,0 +1,14 @@
+mode: predict
+name: regular_random_3x7x3_1
+oc20: false
+pretrained_model_path: models/box_unique_random_contour_3x4x3_1000/model_box_unique_random_contour_3x4x3_1000.pth
+save_preds_path: models/box_unique_random_contour_3x4x3_1000/regular_random_3x7x3_1.pt
+train:
+  normalize_labels: true
+  src: data/regular_random_3x7x3_1/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 15.20159912109375
+  target_std_N: 4.858945369720459
+  target_std_disp: 0.002471183892339468

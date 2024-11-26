@@ -52,7 +52,29 @@ class ForceDecoder(nn.Module):
         assert self.output_type in output_dims, "Invalid output type specified"
         output_dim = output_dims[self.output_type]
 
-        if self.type == "res":
+        if self.type == "simple":
+            assert "hidden_channels" in self.model_config
+            self.model = nn.Sequential(
+                nn.Linear(
+                    input_channels,
+                    self.model_config["hidden_channels"],
+                ),
+                LambdaLayer(act),
+                nn.Linear(self.model_config["hidden_channels"], output_dim),
+            )
+        elif self.type == "mlp":  # from forcenet
+            assert "hidden_channels" in self.model_config
+            self.model = nn.Sequential(
+                nn.Linear(
+                    input_channels,
+                    self.model_config["hidden_channels"],
+                ),
+                self.norm(self.model_config["hidden_channels"]),
+                LambdaLayer(act),
+                nn.Linear(self.model_config["hidden_channels"], output_dim),
+            )
+
+        elif self.type == "res":
             assert "hidden_channels" in self.model_config
             self.mlp_1 = nn.Sequential(
                 nn.Linear(
@@ -132,7 +154,9 @@ class ForceDecoder(nn.Module):
 
     def forward(self, h):
         h = h.to(next(self.parameters()).device)
-        if self.type == "res":
+        if self.type in ["simple", "mlp"]:
+            return self.model(h)
+        elif self.type == "res":
             return self.mlp_3(self.mlp_2(self.mlp_1(h)) + h)
         elif self.type == "res_updown":
             return self.mlp_4(self.mlp_3(self.mlp_2(self.mlp_1(h))) + h)

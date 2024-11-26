@@ -1,27 +1,63 @@
 run_name: "default"
 
 logger: comet
-project: grm-faenet
-debug: False
+project: faetec
+debug: False  # log or not
+save_predictions: true # to save predictions during validation or not
 
-equivariance: "frame_averaging" # "" or "data_augmentation" or "frame_averaging"
-fa_type: "stochastic" # "" or "stochastic" or "full"
+equivariance: "frame_averaging" # "" or "data_augmentation" or "frame_averaging"  ################################################### OFF for now // réactiver faenet plus tard
+fa_type: "full" # "" or "stochastic" or "full"
 
 optimizer:
-    batch_size: 16 # number of structures per batch
-    eval_batch_size: 8
-    epochs: 15
+    batch_size: 16 # 32 # number of structures per batch  // batch size trop petite? entre 16 et 64 voir 128 max
+    eval_batch_size: 8 # 16
+    epochs: 5
     scheduler: CosineAnnealingLR
-    optimizer: AdamW
-    lr_initial: 0.002
+    optimizer: AdamW #AdamW # SGD, Adam, AdamW
+    lr_initial: 0.0005136092451835573 # 0.002  #0.00005 #0.002   # de 0.01 à 0.00001par pas de puissance 10
 
 defaults:
-    - _self_
-    - dataset : structures # oc20
-    - model : faenet
-  
-# Hydra config, do not change.
+  - _self_
+  - dataset : blocks_unique_random_last_floor_2x2x2_10 #box_unique_random_contour_3x3x3_5000 #regular_random_3x7x3_1 #box_unique_random_contour_3x4x3_1000 # <-- Default dataset; it can be overridden
+  - model : faenet
+  - override hydra/sweeper: optuna
+  - override hydra/sweeper/sampler: tpe
+
+# # Hydra config, do not change.
+# hydra:
+#   output_subdir: null
+#   run:
+#     dir: .
+
+
+# run with: python main.py -m 
 hydra:
-  output_subdir: null
-  run:
-    dir: .
+  # output_subdir: null
+  # run:
+  #   dir: .
+  # sweep:
+  #   dir: .
+  sweeper:
+    sampler:
+      seed: 123
+    direction: minimize
+    study_name: minimize MAE disp
+    storage: sqlite:///sweep_to_be_renamed.db
+    # storage: null
+    n_trials: 300
+    n_jobs: 1
+    # max_failure_rate: 0.0
+    params:
+      # x: range(-5.5, 5.5, step=0.5)
+      # y: choice(-5 ,0 ,5)
+      optimizer.batch_size: choice(16, 32, 64, 128)
+      optimizer.eval_batch_size: choice(8, 16, 32, 64)
+      # optimizer.lr_initial: choice(0.01, 0.002, 0.0005, 0.0001)
+      optimizer.lr_initial: interval(0.0001, 0.01)
+      optimizer.optimizer: choice("Adam", "SGD", "AdamW")
+      model.act: choice("relu", "swish")
+      model.hidden_channels: choice(64, 256, 384, 512, 640)
+      model.num_filters: choice(64, 256, 384, 512, 640)
+      model.num_interactions: choice(2, 3, 4, 5, 6, 7, 8)
+      model.second_layer_MLP: choice(true, false)
+      model.complex_mp: choice(true, false)

@@ -1,0 +1,19 @@
+name: box_unique_random_last_floor_4x4x4_10000
+oc20: false
+save_model_path: models/box_unique_random_last_floor_4x4x4_10000/model_box_unique_random_last_floor_4x4x4_10000.pth
+save_preds_path: models/box_unique_random_last_floor_4x4x4_10000/val/
+save_transformed_base_path: models/box_unique_random_last_floor_4x4x4_10000/val/transformed_base/
+save_transformed_preds_path: models/box_unique_random_last_floor_4x4x4_10000/val/transformed_predictions/
+train:
+  normalize_labels: true
+  src: data/box_unique_random_last_floor_4x4x4_10000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 21.296138763427734
+  target_std_N: 21.77537727355957
+  target_std_disp: 0.013908911496400833
+val:
+  src: data/box_unique_random_last_floor_4x4x4_10000/val/val.lmdb
+  val:
+    src: data/box_unique_random_last_floor_4x4x4_10000/val/val.lmdb
