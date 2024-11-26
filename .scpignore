@@ -1,7 +1,9 @@
 data/
 data_to_convert/
+dataset_preprocess/
 venv/
 tests/
+graphs/
 .venv/
 .vscode/
 README.md

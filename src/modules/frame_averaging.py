@@ -54,7 +54,7 @@ def frame_averaging(pos, f, fa_method="stochastic", oc20=False):
 
     signs = list(product([1, -1], repeat=relative_pos.shape[1] + 1))
     basis_projections = [torch.tensor(x) for x in signs] # 16 combinations (or less for 2D)
-    lmbda_f = 1 #################################################################################torch.max(torch.norm(f, dim=-1, keepdim=True))
+    lmbda_f = torch.max(torch.norm(f, dim=-1, keepdim=True))
     fa_poss = []
     fa_cells = []
     fa_fs = []

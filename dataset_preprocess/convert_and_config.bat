@@ -2,11 +2,10 @@
 
 set LOCAL_DIR=c:/Users/raphael.trezarieu/Documents/Code/faetec/
 set VENV_PYTHON=c:/Users/raphael.trezarieu/Documents/Code/faetec/.venv/Scripts/python.exe
-set DATASET_NAME="box_unique_random_contour_3x4x3_1000"
+set DATASET_NAME="blocks_unique_random_last_floor_2x2x2_10"
 
 cd %LOCAL_DIR%
 
-@REM python dataset_preprocess/dataset_convertor.py %DATASET_NAME%
 %VENV_PYTHON% dataset_preprocess/dataset_convertor.py %DATASET_NAME%
 
 if %errorlevel% neq 0 (

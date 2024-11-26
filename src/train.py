@@ -7,7 +7,7 @@ import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from .datasets.base_dataset import BaseDataset, ParallelCollater
 from .modules.frame_averaging import FrameAveraging
-from .faenet import FAENet
+from .faenet import FAEtec
 from .datasets.data_utils import Normalizer, GraphRotate, GraphReflect
 from .utils import Compose
 from .gnn_utils import node_accuracy_error
@@ -57,11 +57,11 @@ class Trainer():
         model_path = self.config["dataset"].get("pretrained_model_path", None)
         if model_path:
             print(f"Loading model from {model_path}")
-            self.model = FAENet(**self.config["model"]).to(self.device)
+            self.model = FAEtec(**self.config["model"]).to(self.device)
             print(f"Loading state_dict {model_path}")
             self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         else:
-            self.model = FAENet(**self.config["model"]).to(self.device)
+            self.model = FAEtec(**self.config["model"]).to(self.device)
         
     def load_optimizer(self):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config['optimizer'].get('lr_initial', 1e-4))

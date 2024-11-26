@@ -9,6 +9,7 @@ import hydra
 from src.datasets.base_dataset import BaseDataset
 from src.utils import visualize_graphs, visualize_graphs_for_animation
 from src.train import transformations_list
+from matplotlib.animation import FFMpegWriter
 
 
 class SimpleDatasetLoader:
@@ -51,7 +52,7 @@ class SimpleDatasetLoader:
     def load_all_predictions(self):
         """Loads predictions for all epochs to optimize animation."""
         all_predictions = {}
-        max_epochs = 15
+        max_epochs = 100
         preds_save_path = self.config["dataset"].get("save_preds_path", "predictions")
         for epoch in range(max_epochs):
             epoch_path = os.path.join(preds_save_path, f"epoch_{epoch}.pt")
@@ -90,14 +91,14 @@ class SimpleDatasetLoader:
                                         x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list,
                                         z_forces_list, supports_list, x_limits, y_limits, z_limits)
 
-        anim = FuncAnimation(fig, update_plot, frames=range(num_epochs), interval=400, repeat=True)
+        anim = FuncAnimation(fig, update_plot, frames=range(num_epochs), interval=300, repeat=True)
 
-        # writer = FFMpegWriter(fps=2, metadata={'artist': 'Me'}, bitrate=1800)
-        # try:
-        #     anim.save("predictions_animation.mp4", writer=writer, dpi=200)
-        #     print("Animation saved successfully!")
-        # except Exception as e:
-        #     print(f"Error saving animation: {e}")
+        writer = FFMpegWriter(fps=2, metadata={'artist': 'Me'}, bitrate=1800)
+        try:
+            anim.save("predictions_animation.mp4", writer=writer, dpi=200)
+            print("Animation saved successfully!")
+        except Exception as e:
+            print(f"Error saving animation: {e}")
 
         plt.show()
 
@@ -126,9 +127,8 @@ def main(config: DictConfig):
         y_target_list = [x + 100 * y for x, y in zip(y_list, sample_data.y[:, 1].tolist())]
         z_target_list = [x + 100 * y for x, y in zip(z_list, sample_data.y[:, 2].tolist())]
 
-        # Generate the animation
         dataset_loader.create_animation(sample_data, x_list, y_list, z_list, x_target_list, y_target_list,
-                                        z_target_list, x_forces_list, y_forces_list, z_forces_list, supports_list)
+                                        z_target_list, x_forces_list, y_forces_list, z_forces_list, supports_list, num_epochs=100)
 
 if __name__ == "__main__":
     main()

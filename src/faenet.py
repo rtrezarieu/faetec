@@ -9,7 +9,7 @@ from torch_geometric.nn.norm import GraphNorm
 from .gnn_utils import dropout_edge, swish, relu
 from src.force_decoder import ForceDecoder
 
-class FAENet(nn.Module):
+class FAEtec(nn.Module):
     #### add description
 
     def __init__(

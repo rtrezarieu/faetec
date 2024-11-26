@@ -107,5 +107,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     dataset_name = sys.argv[1]
-    # dataset_name = "regular_random_3x7x3_2000"
     main(dataset_name)

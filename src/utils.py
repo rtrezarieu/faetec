@@ -133,9 +133,9 @@ class GraphVisualizer:
 
                 for node in vis.nodes():
                     x, y, z = pos_3d4[node]
-                    fx, fy, fz = self.x_forces_list[node], -self.z_forces_list[node], self.y_forces_list[node]
+                    fx, fy, fz = self.x_forces_list[node], self.y_forces_list[node], self.z_forces_list[node]
                     amplitude = (fx**2 + fy**2 + fz**2)**0.5
-                    normalized_length = amplitude * scaling_factor
+                    normalized_length = amplitude * scaling_factor * 2
                     self.ax.quiver(x, y, z, fx, fy, fz, color='orange', length=normalized_length, normalize=False)
 
         if self.supports_list is not None:
@@ -170,11 +170,11 @@ class GraphVisualizer:
                         x2, y2, z2 = pos_3d7[neighbor]
                         self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='lime')  
 
-        self.ax.set_xlabel('X Pythagore', fontsize=14)
-        self.ax.set_ylabel('Y Pythagore', fontsize=14)
-        self.ax.set_zlabel('Z Pythagore', fontsize=14)
-        self.ax.set_title('3D Visualization of Graph', fontsize=16)
-        self.ax.tick_params(axis='both', which='major', labelsize=12)
+        # self.ax.set_xlabel('X Pythagore', fontsize=14)
+        # self.ax.set_ylabel('Y Pythagore', fontsize=14)
+        # self.ax.set_zlabel('Z Pythagore', fontsize=14)
+        # self.ax.set_title('3D Visualization of Graph', fontsize=16)
+        # self.ax.tick_params(axis='both', which='major', labelsize=12)
         self.ax.view_init(vertical_axis='y')
         self.ax.axes.set_aspect('equal')
         plt.tight_layout()

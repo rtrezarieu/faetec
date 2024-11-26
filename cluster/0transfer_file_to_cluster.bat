@@ -1,19 +1,7 @@
 @echo off
-REM Transfer files to the cluster - Templates
-REM scp my_file.py raphtrez@satori-login-001.mit.edu:~/GRM-FAENET/
-REM scp -r my_directory raphtrez@satori-login-001.mit.edu:~/GRM-FAENET/
-
-REM To execute first from VSCode terminal
-REM .\transfer_files_to_cluster.bat
-REM cd "c:/Users/raphael.trezarieu/OneDrive - Setec/Documents/PFE/Code/grm-faenet-main/"
-REM scp dataset_convertor.py raphtrez@satori-login-001.mit.edu:~/GRM-FAENET/
-
-
-
-
 REM Transfer files in the data directory to the cluster, excluding specified files and directories
 
-REM Define variables
+REM
 set LOCAL_DIR="c:/Users/raphael.trezarieu/OneDrive - Setec/Documents/PFE/Code/grm-faenet-main/data/"
 set REMOTE_USER="raphtrez"
 set REMOTE_HOST="satori-login-001.mit.edu"

@@ -162,6 +162,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+cluster/
 data/
 data_to_convert/
 tests/
@@ -169,4 +170,5 @@ tests/
 multirun/
 outputs/
 models/
+scripts/
 # optuna/

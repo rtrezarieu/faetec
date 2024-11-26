@@ -22,7 +22,7 @@ def main(config: DictConfig):
     else:
         device = torch.device("cpu")
 
-    mode = config["dataset"].get("mode", "train")  # Add 'mode' to your config
+    mode = config["dataset"].get("mode", "train")
     config["run_name"] = f'{config["dataset"].get("name", "structures")}_{config["model"].get("name", "faenet")}_{config.get("experiment_name", "")}'
 
     config_dict = OmegaConf.to_container(config, resolve=True)

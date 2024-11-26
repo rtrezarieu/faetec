@@ -12,18 +12,17 @@ class SimpleDatasetLoader:
     def __init__(self, config):
         self.config = config
         self.load_dataset()
-        self.predictions = self.load_predictions()
+        self.predictions = self.load_predictions(epoch=4)
         self.transformations = self.load_predictions(transformations=True)
         self.transformed_base = self.load_predictions(base=True)
 
     def load_dataset(self):
         """Loads the training dataset and prints some basic information."""
         self.transform = self._get_transform()
-        # Assuming BaseDataset is a class that you use for handling your dataset
         if 'train' in self.config['dataset']:
-            self.dataset = BaseDataset(self.config['dataset']['val'], transform=None)  ##################### NONE   self.transform
+            self.dataset = BaseDataset(self.config['dataset']['val'], transform=None)
         else:
-            self.dataset = BaseDataset(self.config['dataset']['pred'], transform=None)  ##################### NONE   self.transform
+            self.dataset = BaseDataset(self.config['dataset']['pred'], transform=None)
 
         print(f"Loaded dataset with {len(self.dataset)} samples.")
 
@@ -37,9 +36,9 @@ class SimpleDatasetLoader:
             raise IndexError("Sample index out of range.")
         
         single_sample = torch.utils.data.Subset(self.dataset, [index])
-        return DataLoader(single_sample, batch_size=1, shuffle=False)  # torch.utils.data.
+        return DataLoader(single_sample, batch_size=1, shuffle=False)
     
-    def load_predictions(self, epoch=14, transformations=False, base=False):
+    def load_predictions(self, epoch=4, transformations=False, base=False):
         """Loads saved predictions from disk."""
         if transformations:
             preds_save_path = self.config["dataset"].get("save_transformed_preds_path", "transformations/saved_transformations.pth")
@@ -81,7 +80,7 @@ def main(config: DictConfig):
     original_cwd = hydra.utils.get_original_cwd()
     os.chdir(original_cwd)
 
-    disp_scaling = 100
+    disp_scaling = 20
     dataset_loader = SimpleDatasetLoader(config)
     # index of the structure in val to visualize. Works only with index=0 for now, because the index is never specified in prediction (etc.), so zip handles it well and select only the first elements.
     single_sample_loader = dataset_loader.get_single_sample_loader(index=0) ###### index is only useful if we want to check one structure from a train, without predictions
@@ -122,9 +121,6 @@ def main(config: DictConfig):
             z_transf_base_list = None
 
         if transformation is not None:    
-            # print(transformation * disp_scaling) ########################################################################################  VALEURS TRES FAIBLES
-            ################################################### problème avec le scaling lors des transformations ? Voir avec Jad
-            # print(x_transf_base_list)
             x_transf_list = [x + disp_scaling * y for x, y in zip(x_transf_base_list, transformation[:, 0].tolist())]
             y_transf_list = [x + disp_scaling * y for x, y in zip(y_transf_base_list, transformation[:, 1].tolist())]
             z_transf_list = [x + disp_scaling * y for x, y in zip(z_transf_base_list, transformation[:, 2].tolist())]
@@ -132,17 +128,12 @@ def main(config: DictConfig):
             x_transf_list = None
             y_transf_list = None
             z_transf_list = None
-        # visualize_graph_as_3D_structure(sample_data, x_list, y_list, z_list, color='k')
-        # visualize_graph_as_3D_structure(sample_data, x_target_list, y_target_list, z_target_list, color='r')
         
         visualize_graphs(
                         sample_data, x_list, y_list, z_list, x_target_list, y_target_list, z_target_list, 
                         x_pred_list, y_pred_list, z_pred_list, x_forces_list, y_forces_list, z_forces_list, supports_list,
                         x_transf_list, y_transf_list, z_transf_list, x_transf_base_list, y_transf_base_list, z_transf_base_list
-                        )   #show_vectors=True
-        ### change colors
-        ### change nodes color
-        ### option to print the vector only
+                        )
 
 if __name__ == "__main__":
     main()

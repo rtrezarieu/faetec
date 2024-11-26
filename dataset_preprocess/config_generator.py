@@ -6,8 +6,6 @@ import pickle
 from tqdm import tqdm
 
 def main(dataset_name):
-    # Paths to the dataset files
-    # dataset_name = 'regular_random_3x7x3_20000'
     data_dir = f'data_to_convert/{dataset_name}'
     config_path = f'configs/dataset/{dataset_name}.yaml'
 
@@ -40,12 +38,10 @@ def main(dataset_name):
     all_N = torch.cat(all_N, dim=0)
     all_M = torch.cat(all_M, dim=0)
 
-    # Calculate standard deviations
-    std_disp = torch.std(all_disp) #### faire l'écart-type des normes des vecteurs
+    std_disp = torch.std(all_disp)
     std_N = torch.std(all_N)
     std_M = torch.std(all_M)
 
-    # Configuration dictionary
     config = {
         'name': f'{dataset_name}',
         'save_model_path': f'models/{dataset_name}/model_{dataset_name}.pth',
@@ -71,10 +67,8 @@ def main(dataset_name):
         'oc20': False
     }
 
-    # Create directory if it doesn't exist
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
-    # Write configuration to YAML file
     with open(config_path, 'w') as file:
         yaml.dump(config, file, default_flow_style=False)
 
