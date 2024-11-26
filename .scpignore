@@ -6,6 +6,8 @@ tests/
 graphs/
 .venv/
 .vscode/
+local_tests/
+scripts/
 README.md
 run_calculations_on_cluster.bat
 transfer_files_to_cluster.bat

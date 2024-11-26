@@ -2,7 +2,6 @@ import os
 import sys
 import yaml
 import torch
-import pickle
 from tqdm import tqdm
 
 def main(dataset_name):

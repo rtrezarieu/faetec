@@ -170,11 +170,11 @@ class GraphVisualizer:
                         x2, y2, z2 = pos_3d7[neighbor]
                         self.ax.plot([x1, x2], [y1, y2], [z1, z2], c='lime')  
 
-        # self.ax.set_xlabel('X Pythagore', fontsize=14)
-        # self.ax.set_ylabel('Y Pythagore', fontsize=14)
-        # self.ax.set_zlabel('Z Pythagore', fontsize=14)
-        # self.ax.set_title('3D Visualization of Graph', fontsize=16)
-        # self.ax.tick_params(axis='both', which='major', labelsize=12)
+        self.ax.set_xlabel('X Pythagore', fontsize=14)
+        self.ax.set_ylabel('Y Pythagore', fontsize=14)
+        self.ax.set_zlabel('Z Pythagore', fontsize=14)
+        self.ax.set_title('3D Visualization of Graph', fontsize=16)
+        self.ax.tick_params(axis='both', which='major', labelsize=12)
         self.ax.view_init(vertical_axis='y')
         self.ax.axes.set_aspect('equal')
         plt.tight_layout()
@@ -259,21 +259,6 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
     ax.set_zlim(*z_limits)
 
     vis = to_networkx(sample_data)
-    # pos_3d1 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), x_list, y_list, z_list)}
-    # sc1 = ax.scatter(*zip(*pos_3d1.values()), s=120, c='b', depthshade=True)
-    # for node in vis.nodes():
-    #     for neighbor in vis.neighbors(node):
-    #         x1, y1, z1 = pos_3d1[node]
-    #         x2, y2, z2 = pos_3d1[neighbor]
-    #         ax.plot([x1, x2], [y1, y2], [z1, z2], c='b')
-
-    # pos_3d2 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), x_target_list, y_target_list, z_target_list)}
-    # sc2 = ax.scatter(*zip(*pos_3d2.values()), s=120, c='r', depthshade=True)
-    # for neighbor in vis.neighbors(node):
-    #     x1, y1, z1 = pos_3d2[node]
-    #     x2, y2, z2 = pos_3d2[neighbor]
-    #     ax.plot([x1, x2], [y1, y2], [z1, z2], c='r')
-
     if x_pred_list is not None and y_pred_list is not None and z_pred_list is not None:
         pos_3d3 = {node: (x, y, z) for node, x, y, z in zip(vis.nodes(), x_pred_list, y_pred_list, z_pred_list)}
         sc3 = ax.scatter(*zip(*pos_3d3.values()), s=120, c='g', depthshade=True)
@@ -283,9 +268,6 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
                 x2, y2, z2 = pos_3d3[neighbor]
                 ax.plot([x1, x2], [y1, y2], [z1, z2], c='g') 
 
-    # Optional: Plot forces or other vectors if necessary
-    # ax.quiver(...) for forces
-
     ax.legend()
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -293,7 +275,6 @@ def visualize_graphs_for_animation(ax, sample_data, x_list, y_list, z_list, x_ta
     ax.view_init(vertical_axis='y')
 
        
-
 # Adapted from torchvision.transforms - avoid importing the whole module
 class Compose:
     """Composes several transforms together."""

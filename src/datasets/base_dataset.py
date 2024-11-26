@@ -15,7 +15,7 @@ class BaseDataset(Dataset):
         self.path = Path(self.config["src"])
 
         if not self.path.exists():
-            # Eventually add here the code to download the dataset, see oc20 source code.
+            # Eventually add here a code to download the dataset.
             raise FileNotFoundError(f"{self.path} does not exist.")
 
         self.env = lmdb.open(
@@ -44,9 +44,6 @@ class BaseDataset(Dataset):
             raise KeyError(f"Key {key} not found in the database.")
         data_object = pickle.loads(datapoint_pickle)
         source = data_object
-        # source = data_object.__dict__
-        # if "_store" in source:
-        #     source = source["_store"]
         data_object =  Data(**{k: v for k, v in source.items() if v is not None})
 
         if self.transform:

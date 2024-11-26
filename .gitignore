@@ -165,6 +165,7 @@ cython_debug/
 cluster/
 data/
 data_to_convert/
+local_tests/
 tests/
 .vscode/
 multirun/

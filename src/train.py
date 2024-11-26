@@ -287,7 +287,6 @@ class Trainer():
                 total_mae_M += mae_loss_M
                 total_mse_M += mse_loss_M
 
-                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)   #### introduce gradient clipping if exploding gradients? 
                 self.optimizer.step()
 
                 metrics = {
@@ -440,8 +439,6 @@ class Trainer():
                 mae_loss_M += mae_loss_M_batch
                 mse_loss_M += mse_loss_M_batch
 
-
-                # les valeurs de rel et accuracies sont doppées par l'utilisation de any qui permet de laisser passer quelques valeurs nulles
                 accuracy_loss_disp_batch, relerror_loss_disp_batch, num_disp = node_accuracy_error(output_unnormed["disp"].to(self.device), target_unnormed["disp"], accuracy_threshold=0.1*self.config['dataset']['train']['target_std_disp'], disp=True)
                 accuracy_loss_N_batch, relerror_loss_N_batch, num_N = node_accuracy_error(output_unnormed["N"].to(self.device), target_unnormed["N"], accuracy_threshold=1e-15*self.config['dataset']['train']['target_std_N'], disp=False)
                 accuracy_loss_M_batch, relerror_loss_M_batch, num_M = node_accuracy_error(output_unnormed["M"].to(self.device), target_unnormed["M"], accuracy_threshold=1e-15*self.config['dataset']['train']['target_std_M'], disp=False)
@@ -522,6 +519,7 @@ class Trainer():
                     self.writer.log_metrics(metrics)
         
 
+    # FAEnet implementation - untouched
     def measure_model_invariance(self, model):
         model.eval()
         metrics = {}

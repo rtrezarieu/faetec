@@ -74,15 +74,6 @@ class Normalizer(object):
             device = "cpu"
 
         self.device = device
-        
-        # if tensor is not None: #### overwritten by means and stds ==> would be useful to unplug it? // 
-        #     self.mean = torch.mean(tensor, dim=0).to(device)
-        #     self.std = torch.std(tensor, dim=0).to(device)
-        #     return
-
-        # if means is not None and stds is not None:
-        #     self.mean = torch.tensor(means).to(device)
-        #     self.std = torch.tensor(stds).to(device)
 
         if tensor is not None:
             self.mean = {key: torch.mean(tensor[key], dim=0).to(device) for key in tensor}
@@ -99,8 +90,6 @@ class Normalizer(object):
         self.rescale_with_hof = False
 
     def to(self, device):
-        # self.mean = self.mean.to(device)
-        # self.std = self.std.to(device)
         self.mean = {key: value.to(device) for key, value in self.mean.items()}
         self.std = {key: value.to(device) for key, value in self.std.items()}
         if self.hof_mean:
@@ -110,10 +99,6 @@ class Normalizer(object):
         self.device = device
 
     def norm(self, tensor, hofs=None):
-        # if hofs is not None and self.rescale_with_hof:
-        #     return tensor / hofs - self.hof_mean
-        # return (tensor - self.mean) / self.std
-
         normed_tensor = {}
         for key in tensor:
             normed_tensor[key] = (tensor[key] - self.mean[key]) / self.std[key]
@@ -121,10 +106,6 @@ class Normalizer(object):
 
 
     def denorm(self, normed_tensor, hofs=None):
-        # if hofs is not None and self.rescale_with_hof:
-        #     return (normed_tensor + self.hof_mean) * hofs
-        # return normed_tensor * self.std + self.mean
-
         denormed_tensor = {}
         for key in normed_tensor:
             denormed_tensor[key] = normed_tensor[key] * self.std[key] + self.mean[key]

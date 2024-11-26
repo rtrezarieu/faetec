@@ -24,13 +24,9 @@ def node_accuracy_error(output, target, accuracy_threshold, disp=True):
     ones = torch.ones(target.shape).to(device)[condition]
     zeros = torch.zeros(target.shape).to(device)[condition]
     relative_accuracy = torch.clamp(ones - torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition])), min=0, max=1)
-    # relative_accuracy = torch.max(ones - torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition])), zeros)
     relative_error = torch.div(torch.abs(target[condition] - output[condition]), torch.abs(target[condition]))
 
-    # return relative_accuracy.sum(), torch.numel(relative_accuracy)
-    # condition.sum() = number of lines = nodes
-    # relative_accuracy.numel() = number of attributes = 3 per nodes for displacement
-    return relative_accuracy.sum(), relative_error.sum(), condition.sum() # relative_accuracy.numel()  #condition.sum()  #, torch.numel(relative_accuracy)
+    return relative_accuracy.sum(), relative_error.sum(), condition.sum()
 
 def swish(x):
     """Swish activation function"""

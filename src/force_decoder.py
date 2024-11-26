@@ -54,7 +54,7 @@ class ForceDecoder(nn.Module):
 
         if self.type == "simple":
             assert "hidden_channels" in self.model_config
-            self.model = nn.Sequential(  ######################################## pourquoi model?
+            self.model = nn.Sequential(
                 nn.Linear(
                     input_channels,
                     self.model_config["hidden_channels"],
@@ -64,7 +64,7 @@ class ForceDecoder(nn.Module):
             )
         elif self.type == "mlp":  # from forcenet
             assert "hidden_channels" in self.model_config
-            self.model = nn.Sequential(    ######################################## pourquoi model?
+            self.model = nn.Sequential(
                 nn.Linear(
                     input_channels,
                     self.model_config["hidden_channels"],

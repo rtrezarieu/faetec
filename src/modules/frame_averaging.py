@@ -34,7 +34,7 @@ class FrameAveraging:
         
 def frame_averaging(pos, f, fa_method="stochastic", oc20=False):
     if oc20:
-        used_pos = pos[:, :2]  ######## à changer pour translater les 3 corrdonées
+        used_pos = pos[:, :2]
     else:
         used_pos = pos
 
@@ -65,13 +65,13 @@ def frame_averaging(pos, f, fa_method="stochastic", oc20=False):
     for pm in basis_projections:  # pm for plus-minus # pm is one combination of the frame
         if oc20:
             new_eigenvec = pm[:2] * eigenvec  # Change the basis of the frame's element for 2D
-            new_lmbda_f = lmbda_f * pm[2]  ###################################### à vérifier +++++
+            new_lmbda_f = lmbda_f * pm[2]  ###################################### to check
             fa_pos = relative_pos @ new_eigenvec  # Project the positions on the new basis
             # fa_f = f[:, :2] @ new_eigenvec / new_lmbda_f  # Adjust forces for 2D
             # fa_f = torch.cat((fa_f[:, :2], f[:, 2].unsqueeze(1)), dim=1)
             fa_f = f[:, :3:2] @ new_eigenvec / new_lmbda_f  # Adjust forces for 2D
             fa_f = torch.cat((fa_f[:, :1], f[:, 1].unsqueeze(1), fa_f[:, 1:]), dim=1)
-            ########################## rebuild fa_f properly!!!!! with the last coordinates
+            ########################## rebuild fa_f properly. with the last coordinates
         else:
             new_eigenvec = pm[:3] * eigenvec  # Change the basis of the frame's element for 3D
             new_lmbda_f = lmbda_f * pm[3]  # Change the sign of the force for 3D
@@ -97,20 +97,13 @@ def frame_averaging(pos, f, fa_method="stochastic", oc20=False):
         all_rots.append(new_eigenvec.unsqueeze(0))
         lmbda_fs.append(new_lmbda_f)
 
-        # # Handle rare case where no R is positive orthogonal
-        # if all_fa_pos == []:
-        #     all_fa_pos.append(fa_pos)
-        #     all_cell.append(fa_cell)
-        #     all_rots.append(new_eigenvec.unsqueeze(0))
-
     if fa_method == "full":
         return fa_poss, fa_fs, all_rots, lmbda_fs
     else: # stochastic
-        # index = torch.randint(0, len(fa_poss) - 1, (1,)) # la borne supérieure est exclue
         index = torch.randint(0, len(fa_poss), (1,))
         return [fa_poss[index]], [fa_fs[index]], [all_rots[index]], [lmbda_fs[index]]
 
-
+# from faenet
 def data_augmentation(g, oc20=True):
     if not oc20:
         # Random rotation around all axes
