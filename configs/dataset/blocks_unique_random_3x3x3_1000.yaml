@@ -1,0 +1,15 @@
+name: blocks_unique_random_3x3x3_1000
+oc20: false
+save_model_path: models/blocks_unique_random_3x3x3_1000/model_blocks_unique_random_3x3x3_1000.pth
+train:
+  normalize_labels: true
+  src: data/blocks_unique_random_3x3x3_1000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 14.018486976623535
+  target_std_N: 11.51037311553955
+  target_std_disp: 0.003345111384987831
+val:
+  val:
+    src: data/blocks_unique_random_3x3x3_1000/val/val.lmdb

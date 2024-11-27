@@ -1,0 +1,15 @@
+name: box_unique_random_vertical_3x3x3_1000
+oc20: false
+save_model_path: models/box_unique_random_vertical_3x3x3_1000/model_box_unique_random_vertical_3x3x3_1000.pth
+train:
+  normalize_labels: true
+  src: data/box_unique_random_vertical_3x3x3_1000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 6.810466289520264
+  target_std_N: 0.5388893485069275
+  target_std_disp: 9.88357060123235e-05
+val:
+  val:
+    src: data/box_unique_random_vertical_3x3x3_1000/val/val.lmdb

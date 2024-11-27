@@ -65,9 +65,9 @@ class GraphReflect():
 class Normalizer(object):
     """Normalize a Tensor and restore it later."""
 
-    def __init__(self, tensor=None, mean=None, std=None, device=None):
+    def __init__(self, tensor=None, means=None, stds=None, device=None):
         """tensor is taken as a sample to calculate the mean and std"""
-        if tensor is None and mean is None:
+        if tensor is None and means is None:
             return
 
         if device is None:
@@ -76,21 +76,22 @@ class Normalizer(object):
         self.device = device
 
         if tensor is not None:
-            self.mean = torch.mean(tensor, dim=0).to(device)
-            self.std = torch.std(tensor, dim=0).to(device)
+            self.mean = {key: torch.mean(tensor[key], dim=0).to(device) for key in tensor}
+            self.std = {key: torch.std(tensor[key], dim=0).to(device) for key in tensor}
             return
 
-        if mean is not None and std is not None:
-            self.mean = torch.tensor(mean).to(device)
-            self.std = torch.tensor(std).to(device)
+        if means is not None and stds is not None:
+            self.mean = {key: torch.tensor(value).to(device) for key, value in means.items()}
+            self.std = {key: torch.tensor(value).to(device) for key, value in stds.items()}
+
 
         self.hof_mean = None
         self.hof_std = None
         self.rescale_with_hof = False
 
     def to(self, device):
-        self.mean = self.mean.to(device)
-        self.std = self.std.to(device)
+        self.mean = {key: value.to(device) for key, value in self.mean.items()}
+        self.std = {key: value.to(device) for key, value in self.std.items()}
         if self.hof_mean:
             self.hof_mean = self.hof_mean.to(device)
         if self.hof_std:
@@ -98,14 +99,18 @@ class Normalizer(object):
         self.device = device
 
     def norm(self, tensor, hofs=None):
-        if hofs is not None and self.rescale_with_hof:
-            return tensor / hofs - self.hof_mean
-        return (tensor - self.mean) / self.std
+        normed_tensor = {}
+        for key in tensor:
+            normed_tensor[key] = (tensor[key] - self.mean[key]) / self.std[key]
+        return normed_tensor
+
 
     def denorm(self, normed_tensor, hofs=None):
-        if hofs is not None and self.rescale_with_hof:
-            return (normed_tensor + self.hof_mean) * hofs
-        return normed_tensor * self.std + self.mean
+        denormed_tensor = {}
+        for key in normed_tensor:
+            denormed_tensor[key] = normed_tensor[key] * self.std[key] + self.mean[key]
+        return denormed_tensor
+        
 
     def state_dict(self):
         sd = {"mean": self.mean, "std": self.std}

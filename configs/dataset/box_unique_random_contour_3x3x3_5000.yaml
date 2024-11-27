@@ -1,0 +1,19 @@
+name: box_unique_random_contour_3x3x3_5000
+oc20: false
+save_model_path: models/box_unique_random_contour_3x3x3_5000/model_box_unique_random_contour_3x3x3_5000.pth
+save_preds_path: models/box_unique_random_contour_3x3x3_5000/val/
+save_transformed_base_path: models/box_unique_random_contour_3x3x3_5000/val/transformed_base/
+save_transformed_preds_path: models/box_unique_random_contour_3x3x3_5000/val/transformed_predictions/
+train:
+  normalize_labels: true
+  src: data/box_unique_random_contour_3x3x3_5000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 42.34678649902344
+  target_std_N: 56.72016143798828
+  target_std_disp: 0.024209236726164818
+val:
+  src: data/box_unique_random_contour_3x3x3_5000/val/val.lmdb
+  val:
+    src: data/box_unique_random_contour_3x3x3_5000/val/val.lmdb

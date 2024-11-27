@@ -1,0 +1,14 @@
+mode: predict
+name: box_unique_random_3x3x3_1
+oc20: false
+pred:
+  normalize_labels: true
+  src: data/box_unique_random_3x3x3_1/pred/pred.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 11.21232795715332
+  target_std_N: 9.005744934082031
+  target_std_disp: 0.0015522820176556706
+pretrained_model_path: models/box_unique_random_3x3x3_1/model_box_unique_random_3x3x3_1.pth
+save_preds_path: models/box_unique_random_3x3x3_1/box_unique_random_3x3x3_1.pt

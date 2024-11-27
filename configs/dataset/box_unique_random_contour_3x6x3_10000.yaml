@@ -1,0 +1,15 @@
+name: box_unique_random_contour_3x6x3_10000
+oc20: false
+save_model_path: models/box_unique_random_contour_3x6x3_10000/model_box_unique_random_contour_3x6x3_10000.pth
+train:
+  normalize_labels: true
+  src: data/box_unique_random_contour_3x6x3_10000/train/train.lmdb
+  target_mean_M: 0
+  target_mean_N: 0
+  target_mean_disp: 0
+  target_std_M: 47.821712493896484
+  target_std_N: 55.692874908447266
+  target_std_disp: 0.03251196816563606
+val:
+  val:
+    src: data/box_unique_random_contour_3x6x3_10000/val/val.lmdb
