@@ -172,5 +172,5 @@ multirun/
 outputs/
 models/
 scripts/
+.scpignore/
 .vscode/
-.scpignore
