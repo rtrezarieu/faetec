@@ -8,3 +8,5 @@ lmdb
 hydra-core
 omegaconf
 wandb
+
+python-dotenv

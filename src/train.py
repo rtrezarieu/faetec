@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 from comet_ml import Experiment
 import torch
 from tqdm import tqdm
@@ -44,15 +45,24 @@ class Trainer():
     def load_logger(self):
         if not self.debug:
             if self.config['logger'] == 'comet':
+                # Load environment variables from .env file 
+                load_dotenv()
+                api_key = os.getenv("COMET_API_KEY") # Your comet API key as a string
+                workspace = os.getenv("COMET_WORKSPACE")  # Your comet workspace as a string
+                if api_key is None:
+                    raise ValueError("COMET_API_KEY environment variable not set")
+                if workspace is None:
+                    raise ValueError("COMET_WORKSPACE environment variable not set")
                 self.experiment = Experiment(
-                    api_key="4PNGEKdzZGpTM83l7pBrnYgTo",
+                    api_key=api_key,
                     project_name=self.config['project'],
-                    workspace="rtrezarieu"
+                    workspace=workspace
                 )
                 self.experiment.set_name(self.run_name)
                 self.experiment.log_parameters(self.config)
                 self.writer = self.experiment
-    
+
+
     def load_model(self):
         model_path = self.config["dataset"].get("pretrained_model_path", None)
         if model_path:

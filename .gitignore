@@ -173,3 +173,4 @@ outputs/
 models/
 scripts/
 # optuna/
+.env
